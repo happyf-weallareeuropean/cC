@@ -1,6 +1,7 @@
 // ==UserScript==
 // @name         close eyes chating v.1a (smart stop;conti)
-// @namespace    http://tampermonkey.net/
+// @homepageURL  https://github.com/happyf-weallareeuropean/close-eyes-chat-gpt
+// @namespace    https://github.com/happyf-weallareeuropean
 // @version      cacf-ae-bh
 // @author       happyfweallareeuropean
 // @description  try to take over the world! during closed ur eyes, no setInterval
