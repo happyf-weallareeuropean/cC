@@ -1,3 +1,6 @@
+# ɔƆ ⌨️😌
+instead of wait whole chatgpt resp then scroll down n navigate to click the 'read aloud' button every time.  
+
 # tostart
 i.put this two scripe in ur hammerspoon init.lua n siswser extension like monkeys, 
 
@@ -10,4 +13,4 @@ iii.
 happyf close eye. ()
 
 
-# ɔƆ ⌨️😌
+
