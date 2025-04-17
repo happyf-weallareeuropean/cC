@@ -16,10 +16,13 @@ happyf close eye. ()
 
 
 
-
+---
 Reference:
+
 easy to setup for devs.
+
 a free open source chatgpt chromium extension(tempermonkey) + hammerspoon, tts locally use macos build in diverse nature voices.
+
 ChatGPT-related extensions and tools that offer real-time read-aloud features, particularly suitable for macOS.
 
 
