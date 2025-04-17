@@ -13,7 +13,7 @@ ii.perfer high quilty siri voice
 - search for 'spoken content' set ur siri defult vioce to siri voice 2 (very close to chatgpt that naturness)
 
 iii.
-happyf close eye. ()
+happyf close eye! 
 
 
 
