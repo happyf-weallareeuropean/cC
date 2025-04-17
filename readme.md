@@ -2,16 +2,24 @@
 - every time after u send out the message to chatgpt, u are free, just listen, u can go anywhere. 
 - instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate to click the 'read aloud' button every time. 
 
-# tostart
-i.put this two scripe in ur hammerspoon init.lua n siswser extension like monkeys, 
+# to setup
+i.base
+- put this two scripe in ur hammerspoon init.lua n siswser extension like monkeys, 
 
 
-ii.
+ii.perfer high quilty siri voice
 - use comand + space go to sys seting
 - search for 'spoken content' set ur siri defult vioce to siri voice 2 (very close to chatgpt that naturness)
 
 iii.
 happyf close eye. ()
+
+
+ref:
+a free open source chatgpt chrome extension + hammerspoon for macos, particular use siri.
+ChatGPT-related extensions and tools that offer real-time read-aloud features, particularly suitable for macOS.
+
+
 
 
 
