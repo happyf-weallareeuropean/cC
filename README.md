@@ -6,8 +6,8 @@ ii.
 - use comand + space go to sys seting
 - search for 'spoken content' set ur siri defult vioce to siri voice 2 (very close to chatgpt that naturness)
 
-
-then happyf close eye. ()
+iii.
+happyf close eye. ()
 
 
 # ɔƆ ⌨️😌
