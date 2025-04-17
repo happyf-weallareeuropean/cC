@@ -7,4 +7,5 @@ ii.set ur siri defult vioce to siri voice 2 (very close to chatgpt ver that natu
 
 then happyf close eye. ()
 
+
 # ɔƆ ⌨️😌
