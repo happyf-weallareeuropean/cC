@@ -1,7 +1,7 @@
  # ɔƆ ⌨️😌
 
-- every time after u send out the message/prompt to chatgpt, u are free, just listen, u can go anywhere, better chatgpt conversations exprice. 
-- instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate to click the 'read aloud' button every time. 
+- now every time u send out the message/prompt to chatgpt, u are free! not just eyes u can listen, u can go anywhere, better chatgpt conversations exprice. 
+-  the scripe extrect assistant tokens from chatgpt.com realtimely, then immediately send to lua they would processe the tts part then that how make can instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate to click the 'read aloud' button every time.
 
 # to setup
 i.base
