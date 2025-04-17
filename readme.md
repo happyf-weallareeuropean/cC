@@ -1,4 +1,5 @@
-# ɔƆ ⌨️😌
+ ɔƆ ⌨️😌
+ ===
 - every time after u send out the message/prompt to chatgpt, u are free, just listen, u can go anywhere, better chatgpt conversations exprice. 
 - instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate to click the 'read aloud' button every time. 
 
