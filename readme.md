@@ -1,7 +1,7 @@
  # about 
 ɔƆ ⌨️😌 
 - now every time u send out the message/prompt to chatgpt, u are free! not just eyes u can listen, u can go anywhere, better chatgpt conversations exprice. 
--  the js script watch n extrect assistant tokens from chatgpt.com realtimely, then content in? js steaming send to lua processe the siri-tts part. like this, make sure instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate to click the 'read aloud' button every time.
+-  the js script watch n extrect assistant tokens from chatgpt.com realtimely, then content in? js steaming send to lua processe the siri-tts part. so like this, make sure instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate to click the 'read aloud' button every time.
 
 # to setup
 i.base
