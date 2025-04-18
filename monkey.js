@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         close eyes chating v.1a (smart stop;conti)
+// @name         close eyes chating v.1b (aloud inticial n path suplemental)
 // @homepageURL  https://github.com/happyf-weallareeuropean/close-eyes-chat-gpt
 // @namespace    https://github.com/happyf-weallareeuropean
 // @version      cacf-ae-bh
@@ -12,7 +12,7 @@
 // ==/UserScript==
 
 (() => {
-  const CONTENT_SELECTOR_INSIDE_ASSISTANT = 'div.markdown.prose.dark\\:prose-invert';
+  const CONTENT_SELECTOR_INSIDE_ASSISTANT = 'div.markdown.prose';
 
   const CHAT_LIST_CONTAINER_SELECTORS = [
     'main .group\\/thread .group\\/conversation-turn',
@@ -84,6 +84,13 @@
 
     const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
     const targetNode = latestAssistantMessage.querySelector(CONTENT_SELECTOR_INSIDE_ASSISTANT);
+      console.log("🔎 Initial detection: latestAssistantMessage element:", latestAssistantMessage);
+      console.log("🔎 Initial detection: targetNode (assistant content):", targetNode);
+      // Skip the interim “thinking…” container; wait for the real reply
+      if (targetNode && targetNode.classList.contains('result-thinking')) {
+        console.log('⏳ Placeholder thinking node detected, waiting for real content.');
+        return;
+      }
     if (!targetNode) return;
 
     if (targetNode !== currentTargetNode) {
@@ -94,36 +101,37 @@
       }
 
       currentTargetNode = targetNode;
-      hasSentFlushSignal = false; // Added line
-      detailObserver = new MutationObserver(() => {
+      // --- if the reply arrived fully‑rendered (no token stream), speak it now ---
+      const initialText = currentTargetNode.innerText.trim();
+      if (initialText && typeof GM_xmlhttpRequest === 'function') {
+        GM_xmlhttpRequest({
+          method: "POST",
+          url: "http://localhost:8080/speak",
+          headers: { "Content-Type": "application/json" },
+          data: JSON.stringify({ flushQueue: true, text: initialText }),
+    onload(response) {
+      if (response.status === 200) {
+        console.log("✅ flushQueue + initialText sent successfully");
+      } else {
+        console.error(
+          "❌ flushQueue+initialText failed:",
+          response.status,
+          response.statusText,
+          response.responseText
+        );
+      }
+    },
+    onerror(err) {
+      console.error("❌ Error sending flushQueue+initialText:", err);
+    }
+  });
+        lastKnownFullText = currentTargetNode.innerText; // keep observer in sync
+      }
+          detailObserver = new MutationObserver(() => {
         const currentFullText = currentTargetNode.innerText;
         if (currentFullText.length > lastKnownFullText.length) {
           const newPortion = currentFullText.slice(lastKnownFullText.length);
           console.log("🟢 Partial tokens:", newPortion);
-
-                  // If not yet sent, and we are going from empty to non-empty, flush once
-        if (!hasSentFlushSignal) {
-          if (typeof GM_xmlhttpRequest === 'function') {
-            GM_xmlhttpRequest({
-              method: "POST",
-              url: "http://localhost:8080/speak",
-              headers: { "Content-Type": "application/json" },
-              data: JSON.stringify({ flushQueue: true, text: "" }),
-              onload: function(response) {
-                if (response.status !== 200) {
-                  console.error('Flush request failed:', response.status, response.statusText, response.responseText);
-                } else {
-                  console.log("🟢 flushQueue signal sent on first token for this new message");
-                }
-              },
-              onerror: function(response) {
-                console.error('Error sending flush request:', response.statusText, response.error);
-              }
-            });
-          }
-          hasSentFlushSignal = true;
-        }
-
 
           if (newPortion.trim() && typeof GM_xmlhttpRequest === 'function') {
             GM_xmlhttpRequest({
