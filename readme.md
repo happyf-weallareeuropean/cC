@@ -1,20 +1,20 @@
- # about 
+ # intro 
 ɔƆ ⌨️😌 
 
 https://github.com/user-attachments/assets/247d7223-b6c5-4d95-b0fb-2f449d070554
 
 
-- now every time u send out the message/prompt to chatgpt, u are free! not just eyes u can listen, u can go anywhere, better chatgpt conversations exprice. 
--  the js script realtimely watch n extrect assistant tokens from chatgpt.com ,  then steaming send to lua processe the siri-tts part. like this  instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate corsor to 'read aloud' button n click it got the chatgpt tts every time.
+- it turns ur chatgpt text into live siri voice output as u chat it speaks responses aloud in real time.
+- hands stay free from equential, eyes rest easy.
 
 # to setup
 i.base
-- put this two script in ur hammerspoon init.lua for file init.lua, siswser extension like tapermonkey for monkey.js.
+- cope this two script: one put init.lua in hammerspoon, monkey.js put in tapermonkey (siswser extension).
 
 
 ii.perfer high quilty siri voice
-- use comand + space go to sys seting
-- search for 'spoken content' set ur siri defult vioce to siri voice 2 (very close to chatgpt that naturness)
+- comand + space go to sys seting
+- comand + f then type 'spoken content' set ur siri defult vioce to siri voice 2 (very close to chatgpt tts, 9/10)
 
 iii.
 happyf close eye! ()
@@ -24,12 +24,13 @@ happyf close eye! ()
 ---
 Reference:
 
-easy to setup for devs.
+easy to setup if already had hamm n monkey, just quick copes (with u flycut) n u on fly. 
 
 a free open source chatgpt chromium extension(tempermonkey. safari or webkit base i not try it would work or not but u can try it, whatever what would more complax then on chromium i guess) + hammerspoon, tts locally use macos build in diverse nature voices.
 
 ChatGPT-related extensions and tools that offer real-time read-aloud features, particularly suitable for macOS.
 
+the js script realtimely watch n extrect assistant tokens from chatgpt.com ,  then steaming send to lua processe the siri-tts part. like this  instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate corsor to 'read aloud' button n click it got the chatgpt tts every time.
 
 
 
