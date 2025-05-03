@@ -1,5 +1,5 @@
  # intro 
-ɔƆ ⌨️😌 
+*cC~* ⌨️😌 
 
 https://github.com/user-attachments/assets/247d7223-b6c5-4d95-b0fb-2f449d070554
 
