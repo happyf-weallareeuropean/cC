@@ -32,6 +32,8 @@ ChatGPT-related extensions and tools that offer real-time read-aloud features, p
 
 the js script realtimely watch n extrect assistant tokens from chatgpt.com ,  then steaming send to lua processe the siri-tts part. like this  instead of wait whole chatgpt resp finish then scroll down to bomtom n navigate corsor to 'read aloud' button n click it got the chatgpt tts every time.
 
+to use cC~ req download hammerspon n userscript extension like tampermonkey on they siswser. 
 
+cC~ is the short name of this proj, while the repo name made by theclearty to transport info.
 
 
