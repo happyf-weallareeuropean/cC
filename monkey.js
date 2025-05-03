@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         close eyes chating v.1b (aloud inticial n path suplemental)
+// @name         ɔƆ v.1b (aloud inticial n path suplemental)
 // @homepageURL  https://github.com/happyf-weallareeuropean/close-eyes-chat-gpt
 // @namespace    https://github.com/happyf-weallareeuropean
 // @version      cacf-ae-bh
