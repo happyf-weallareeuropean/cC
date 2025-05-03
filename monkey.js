@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         ɔƆ v.1b (aloud inticial n path suplemental)
-// @homepageURL  https://github.com/happyf-weallareeuropean/close-eyes-chat-gpt
+// @homepageURL  https://github.com/happyf-weallareeuropean/cC
 // @namespace    https://github.com/happyf-weallareeuropean
 // @version      cacf-ae-bh
 // @author       happyfweallareeuropean
