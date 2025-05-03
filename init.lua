@@ -1,14 +1,4 @@
--- Simple HTTP Server + Text-to-Speech for ChatGPT Streaming (MODIFIED TO USE hs.speech)
-
--- No longer needed as hs.speech uses the default system voice
--- local defaultVoice = "Samantha"
--- local chosenVoice = "Siri (Voice 2)"  -- replace with exact voice name from `say -v '?'`
--- local voicesOutput = hs.execute("/usr/bin/say -v '?'") or ""
--- if not voicesOutput:match(chosenVoice) then
---     print("TTS Server: Voice '"..chosenVoice.."' not found. Falling back to '"..defaultVoice.."'.")
---     chosenVoice = defaultVoice
--- end
-
+-- ɔƆ
 local http = require("hs.httpserver")
 local json = require("hs.json")
 -- local task = require("hs.task") -- No longer using hs.task
