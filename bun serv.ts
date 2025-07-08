@@ -1,4 +1,3 @@
-//cC tts server
 import {
   serve,
   type Server,
