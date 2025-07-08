@@ -1,0 +1,9 @@
+# Ignore everything
+*
+
+# Track only these files
+!/bun\ serv.ts
+!/token-post.js
+!/monkey.js
+!/readme.md
+!/.gitignore

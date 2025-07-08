@@ -10,12 +10,25 @@ import fs from "node:fs";
 import path from "node:path";
 
 // --- Configuration ---
-const DEBUG = true;
-const SERVER_PORT = 80808;
+const SERVER_PORT = 65535;
 const TTS_RATE = 190; // Speech rate for the 'say' command
 
-// EU Stream Config
-const EU_STREAM_URL = "https://stream.srg-ssr.ch/m/rsc_de/mp3_128";
+const logInfo = (...args: any[]) => {};
+const logWarn = (...args: any[]) => {};
+const logError = console.error.bind(console, '[ERROR]'); // Always log errors
+
+// A pool of reliable ad‑free European classical streams
+const EU_STREAM_URLS = [
+  // "https://www.concertzender.nl/streams/klassiek",
+  // "https://icecast.omroep.nl/radio4-bb-mp3",
+  // "http://icecast.vrtcdn.be/klaracontinuo-high.mp3",
+  "http://116.202.241.212:8010/stream",
+  "http://148.251.43.231:8742/160",
+];
+
+// Pick one at random from the array (avoid out‑of‑bounds undefined)
+const EU_STREAM_URL =
+  EU_STREAM_URLS[Math.floor(Math.random() * EU_STREAM_URLS.length)];
 const EU_FIFO_PATH = "/tmp/eu_fifo";
 const EU_PLAYER_PATHS = [
   "/opt/homebrew/bin/ffplay",
@@ -35,6 +48,8 @@ let currentSpeechProcess: Subprocess | null = null;
 let euPlayerPath: string | null = null;
 let euFeederProcess: Subprocess | null = null;
 let euPlayerProcess: Subprocess | null = null;
+let lastEUPing = 0;
+let euPingTimer: Timer | null = null;
 
 // --- Interfaces ---
 interface SpeakPayload {
@@ -49,48 +64,38 @@ interface ReplacePayload {
 }
 
 // --- Utility Functions ---
-const logDebug = (...args: any[]) => {
-  if (DEBUG) {
-    console.log(`[DEBUG]`, ...args);
-  }
-};
-
-const logInfo = (...args: any[]) => {
-  console.log(`[INFO]`, ...args);
-};
-
-const logWarn = (...args: any[]) => {
-  console.warn(`[WARN]`, ...args);
-};
-
-const logError = (...args: any[]) => {
-  console.error(`[ERROR]`, ...args);
-};
-
 const killProcess = (
   proc: Subprocess | null,
   name: string,
   signal: NodeJS.Signals | number = "SIGTERM"
 ) => {
   if (proc && proc.pid) {
-    logDebug(
-      `Attempting to kill ${name} process (PID: ${proc.pid}) with signal ${signal}...`
-    );
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `Attempting to kill ${name} process (PID: ${proc.pid}) with signal ${signal}...`);
+    }
     const killed = proc.kill(signal as number); // Bun's types might mismatch NodeJS.Signals sometimes
-    logDebug(`${name} process kill signal sent (success: ${killed}).`);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `${name} process kill signal sent (success: ${killed}).`);
+    }
     return killed;
   }
   return false;
 };
 
 const pkillProcess = (pattern: string) => {
-  logDebug(`Attempting to pkill processes matching: ${pattern}`);
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[DEBUG]", `Attempting to pkill processes matching: ${pattern}`);
+  }
   try {
     const result = spawnSync([PKILL_PATH, "-f", pattern]);
     if (result.exitCode === 0) {
-      logDebug(`pkill successful for pattern: ${pattern}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[DEBUG]", `pkill successful for pattern: ${pattern}`);
+      }
     } else if (result.exitCode === 1) {
-      logDebug(`No processes found matching pattern: ${pattern}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[DEBUG]", `No processes found matching pattern: ${pattern}`);
+      }
     } else {
       logWarn(
         `pkill for pattern "${pattern}" exited with code ${
@@ -107,7 +112,9 @@ const pkillProcess = (pattern: string) => {
 
 const stopSayProcess = () => {
   if (currentSpeechProcess) {
-    logDebug("Stopping current 'say' process.");
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", "Stopping current 'say' process.");
+    }
     killProcess(currentSpeechProcess, "say", "SIGKILL"); // 'say' might need SIGKILL
     currentSpeechProcess = null;
     isSpeaking = false; // Ensure state is reset
@@ -121,6 +128,7 @@ const flushQueue = () => {
 };
 
 const enqueueSpeech = (text: string) => {
+  logInfo(`[${new Date().toISOString()}] Received incoming letter: "${text}"`);
   const trimmedText = text.trim();
   if (!trimmedText) return;
 
@@ -143,13 +151,15 @@ const enqueueSpeech = (text: string) => {
       speakQueue[speakQueue.length - 1] += sanitizedText;
     }
   }
-  logDebug(`Enqueued: "${sanitizedText}". Queue length: ${speakQueue.length}`);
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[DEBUG]", `Enqueued: "${sanitizedText}". Queue length: ${speakQueue.length}`);
+  }
 };
 
 const startNextSpeech = () => {
-  logDebug(
-    `startNextSpeech called. isSpeaking: ${isSpeaking}, queueLength: ${speakQueue.length}`
-  );
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[DEBUG]", `startNextSpeech called. isSpeaking: ${isSpeaking}, queueLength: ${speakQueue.length}`);
+  }
   if (isSpeaking || speakQueue.length === 0) {
     return;
   }
@@ -172,9 +182,9 @@ const startNextSpeech = () => {
       stdout: "inherit", // Inherit stdout/stderr for potential messages/errors from 'say'
       stderr: "inherit",
       onExit: (proc, exitCode, signalCode, error) => {
-        logDebug(
-          `'say' process exited. Code: ${exitCode}, Signal: ${signalCode}`
-        );
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[DEBUG]", `'say' process exited. Code: ${exitCode}, Signal: ${signalCode}`);
+        }
         if (error) {
           logError("'say' process exited with error:", error);
         }
@@ -182,7 +192,9 @@ const startNextSpeech = () => {
         if (currentSpeechProcess && currentSpeechProcess.pid === proc.pid) {
           currentSpeechProcess = null;
           isSpeaking = false;
-          logDebug("Current speech finished, checking queue for next.");
+          if (process.env.NODE_ENV !== "production") {
+            console.debug("[DEBUG]", "Current speech finished, checking queue for next.");
+          }
           // Use setTimeout to avoid potential deep recursion if 'say' fails instantly
           setTimeout(startNextSpeech, 0);
         } else {
@@ -193,7 +205,9 @@ const startNextSpeech = () => {
       },
     });
 
-    logDebug(`Started 'say' process (PID: ${currentSpeechProcess.pid})`);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `Started 'say' process (PID: ${currentSpeechProcess.pid})`);
+    }
 
     // Handle potential immediate errors during spawn (though less common with spawn)
     if (!currentSpeechProcess || !currentSpeechProcess.pid) {
@@ -233,12 +247,16 @@ const findEuPlayer = (): string | null => {
 };
 
 const stopFeeder = () => {
-  logDebug("Stopping EU stream feeder (curl)...");
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[DEBUG]", "Stopping EU stream feeder (curl)...");
+  }
   if (euFeederProcess) {
     killProcess(euFeederProcess, "curl feeder");
     euFeederProcess = null;
   } else {
-    logDebug("No active feeder process handle found, using pkill as fallback.");
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", "No active feeder process handle found, using pkill as fallback.");
+    }
     // Use pkill as a fallback to catch manually started or orphaned processes
     pkillProcess(`${CURL_PATH}.*${EU_FIFO_PATH}`);
   }
@@ -248,18 +266,31 @@ const eu_warm = () => {
   logInfo("Warming EU stream feeder...");
   stopFeeder(); // Ensure any previous feeder is stopped
 
+  // Use the selected stream URL, guard against undefined
+  const STREAM_URL = EU_STREAM_URL;
+  if (!STREAM_URL) {
+    logError(
+      "EU_STREAM_URL is undefined – check stream list. Aborting warm‑up."
+    );
+    return;
+  }
+
   // Ensure FIFO exists
   try {
     // Attempt to remove existing FIFO first (ignore error if it doesn't exist)
     try {
       fs.unlinkSync(EU_FIFO_PATH);
-      logDebug(`Removed existing FIFO: ${EU_FIFO_PATH}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[DEBUG]", `Removed existing FIFO: ${EU_FIFO_PATH}`);
+      }
     } catch {
       /* Ignore */
     }
 
     // Create new FIFO
-    logDebug(`Creating FIFO: ${EU_FIFO_PATH}`);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `Creating FIFO: ${EU_FIFO_PATH}`);
+    }
     const mkfifoResult = spawnSync([MKFIFO_PATH, EU_FIFO_PATH]);
     if (mkfifoResult.exitCode !== 0) {
       throw new Error(
@@ -268,14 +299,16 @@ const eu_warm = () => {
         }: ${mkfifoResult.stderr.toString()}`
       );
     }
-    logDebug(`FIFO created successfully.`);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `FIFO created successfully.`);
+    }
 
     // Start curl feeder process
-    logDebug(
-      `Starting curl feeder: ${CURL_PATH} -sL ${EU_STREAM_URL} -o ${EU_FIFO_PATH}`
-    );
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `Starting curl feeder: ${CURL_PATH} -sL ${STREAM_URL} -o ${EU_FIFO_PATH}`);
+    }
     euFeederProcess = spawn(
-      [CURL_PATH, "-sL", EU_STREAM_URL, "-o", EU_FIFO_PATH],
+      [CURL_PATH, "-sL", STREAM_URL, "-o", EU_FIFO_PATH],
       {
         stdin: "ignore",
         stdout: "ignore", // Ignore stdout/stderr unless debugging curl itself
@@ -348,11 +381,13 @@ const eu_start = () => {
           "-analyzeduration",
           "0",
           "-volume",
-          "50",
+          "20",
           EU_FIFO_PATH,
         ];
 
-    logDebug(`Spawning EU player: ${euPlayerPath} ${playerArgs.join(" ")}`);
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", `Spawning EU player: ${euPlayerPath} ${playerArgs.join(" ")}`);
+    }
 
     euPlayerProcess = spawn([euPlayerPath, ...playerArgs], {
       stdin: "ignore",
@@ -390,16 +425,37 @@ const eu_stop = (warmAfterStop = false) => {
     killProcess(euPlayerProcess, "EU player");
     euPlayerProcess = null;
   } else {
-    logDebug("No active player process handle, using pkill fallback.");
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", "No active player process handle, using pkill fallback.");
+    }
     // Fallback pkill based on likely player paths
     pkillProcess("ffplay.*" + EU_FIFO_PATH);
     pkillProcess("mpv.*" + EU_FIFO_PATH);
   }
 
   if (warmAfterStop) {
-    logDebug("Warming feeder after stopping player (mute behavior).");
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[DEBUG]", "Warming feeder after stopping player (mute behavior).");
+    }
     eu_warm(); // Restart the feeder
   }
+};
+
+const startEUPingWatchdog = () => {
+  // Always reset the interval so lpEU can relaunch after a mute
+  if (euPingTimer) {
+    clearInterval(euPingTimer);
+    euPingTimer = null;
+  }
+  euPingTimer = setInterval(() => {
+    const now = Date.now();
+    if (now - lastEUPing > 1000) {
+      logInfo("⏱️ No lpEU ping in >1 s. Muting EU stream.");
+      eu_stop(true);
+      clearInterval(euPingTimer!);
+      euPingTimer = null;
+    }
+  }, 1000);
 };
 
 // --- HTTP Server ---
@@ -409,7 +465,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
   const path = url.pathname;
   const method = request.method;
 
-  logDebug(`Received request: ${method} ${path}`);
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[DEBUG]", `Received request: ${method} ${path}`);
+  }
 
   if (path === "/speak" && method === "POST") {
     let payload: SpeakPayload = {};
@@ -432,6 +490,25 @@ const handleRequest = async (request: Request): Promise<Response> => {
         // Ensure payload is at least an empty object before assigning text
         payload = {};
         payload.text = bodyText || ""; // Use the raw text
+      }
+
+      // --- EU Ping Handling ---
+      if ((payload as any).lpEU) {
+        lastEUPing = Date.now();
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[DEBUG]", "🔄 lpEU ping received.");
+        }
+        startEUPingWatchdog();
+        eu_start(); // Start (or resume) playback on each lpEU ping, mirroring Lua design
+        return new Response("lpEU pong", { status: 200 });
+      }
+
+      if ((payload as any).dsEU) {
+        lastEUPing = Date.now();
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[DEBUG]", "📍 dsEU ping received.");
+        }
+        return new Response("dsEU updated", { status: 200 });
       }
 
       // --- Action Handling ---
@@ -463,7 +540,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
         return new Response("OK (enqueued)", { status: 200 });
       } else {
         // If we only got EU commands or flush, or empty text
-        logDebug("Request handled (non-TTS action or empty text).");
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("[DEBUG]", "Request handled (non-TTS action or empty text).");
+        }
         return new Response("OK (action)", { status: 200 });
       }
     } catch (error) {
@@ -554,7 +633,9 @@ const stopServer = () => {
   // Clean up FIFO
   try {
     if (fs.existsSync(EU_FIFO_PATH)) {
-      logDebug(`Removing FIFO on shutdown: ${EU_FIFO_PATH}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[DEBUG]", `Removing FIFO on shutdown: ${EU_FIFO_PATH}`);
+      }
       fs.unlinkSync(EU_FIFO_PATH);
     }
   } catch (error) {
@@ -563,7 +644,7 @@ const stopServer = () => {
 };
 
 // --- Health Check ---
-setInterval(() => {
+/*setInterval(() => {
   logDebug(
     `[HealthCheck] isSpeaking: ${isSpeaking}, queueLength: ${
       speakQueue.length
@@ -572,6 +653,19 @@ setInterval(() => {
     }`
   );
 }, 30 * 1000); // Check every 30 seconds
+*/
+// Optional Electron integration (guarded so Bun tests won’t fail)
+let app, globalShortcut;
+try {
+  ({ app, globalShortcut } = require("electron"));
+  app.whenReady().then(() => {
+    globalShortcut.register("Shift+Right", () => {
+      console.log("Right Shift pressed");
+    });
+  });
+} catch {
+  // Electron not available (e.g., running under Bun), skip integration
+}
 
 // --- Shutdown Hook ---
 const cleanupAndExit = (signal: string) => {
