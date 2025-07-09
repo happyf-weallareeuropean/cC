@@ -15,7 +15,7 @@ const TTS_RATE = 190; // Speech rate for the 'say' command
 
 const logInfo = (...args: any[]) => {};
 const logWarn = (...args: any[]) => {};
-const logError = console.error.bind(console, "[ERROR]"); // Always log errors
+const logError = console.error.bind(console, '[ERROR]'); // Always log errors
 
 // A pool of reliable ad‑free European classical streams
 const EU_STREAM_URLS = [
@@ -71,17 +71,11 @@ const killProcess = (
 ) => {
   if (proc && proc.pid) {
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        `Attempting to kill ${name} process (PID: ${proc.pid}) with signal ${signal}...`
-      );
+      console.debug("[DEBUG]", `Attempting to kill ${name} process (PID: ${proc.pid}) with signal ${signal}...`);
     }
     const killed = proc.kill(signal as number); // Bun's types might mismatch NodeJS.Signals sometimes
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        `${name} process kill signal sent (success: ${killed}).`
-      );
+      console.debug("[DEBUG]", `${name} process kill signal sent (success: ${killed}).`);
     }
     return killed;
   }
@@ -90,10 +84,7 @@ const killProcess = (
 
 const pkillProcess = (pattern: string) => {
   if (process.env.NODE_ENV !== "production") {
-    console.debug(
-      "[DEBUG]",
-      `Attempting to pkill processes matching: ${pattern}`
-    );
+    console.debug("[DEBUG]", `Attempting to pkill processes matching: ${pattern}`);
   }
   try {
     const result = spawnSync([PKILL_PATH, "-f", pattern]);
@@ -103,10 +94,7 @@ const pkillProcess = (pattern: string) => {
       }
     } else if (result.exitCode === 1) {
       if (process.env.NODE_ENV !== "production") {
-        console.debug(
-          "[DEBUG]",
-          `No processes found matching pattern: ${pattern}`
-        );
+        console.debug("[DEBUG]", `No processes found matching pattern: ${pattern}`);
       }
     } else {
       logWarn(
@@ -164,19 +152,13 @@ const enqueueSpeech = (text: string) => {
     }
   }
   if (process.env.NODE_ENV !== "production") {
-    console.debug(
-      "[DEBUG]",
-      `Enqueued: "${sanitizedText}". Queue length: ${speakQueue.length}`
-    );
+    console.debug("[DEBUG]", `Enqueued: "${sanitizedText}". Queue length: ${speakQueue.length}`);
   }
 };
 
 const startNextSpeech = () => {
   if (process.env.NODE_ENV !== "production") {
-    console.debug(
-      "[DEBUG]",
-      `startNextSpeech called. isSpeaking: ${isSpeaking}, queueLength: ${speakQueue.length}`
-    );
+    console.debug("[DEBUG]", `startNextSpeech called. isSpeaking: ${isSpeaking}, queueLength: ${speakQueue.length}`);
   }
   if (isSpeaking || speakQueue.length === 0) {
     return;
@@ -201,10 +183,7 @@ const startNextSpeech = () => {
       stderr: "inherit",
       onExit: (proc, exitCode, signalCode, error) => {
         if (process.env.NODE_ENV !== "production") {
-          console.debug(
-            "[DEBUG]",
-            `'say' process exited. Code: ${exitCode}, Signal: ${signalCode}`
-          );
+          console.debug("[DEBUG]", `'say' process exited. Code: ${exitCode}, Signal: ${signalCode}`);
         }
         if (error) {
           logError("'say' process exited with error:", error);
@@ -214,10 +193,7 @@ const startNextSpeech = () => {
           currentSpeechProcess = null;
           isSpeaking = false;
           if (process.env.NODE_ENV !== "production") {
-            console.debug(
-              "[DEBUG]",
-              "Current speech finished, checking queue for next."
-            );
+            console.debug("[DEBUG]", "Current speech finished, checking queue for next.");
           }
           // Use setTimeout to avoid potential deep recursion if 'say' fails instantly
           setTimeout(startNextSpeech, 0);
@@ -230,10 +206,7 @@ const startNextSpeech = () => {
     });
 
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        `Started 'say' process (PID: ${currentSpeechProcess.pid})`
-      );
+      console.debug("[DEBUG]", `Started 'say' process (PID: ${currentSpeechProcess.pid})`);
     }
 
     // Handle potential immediate errors during spawn (though less common with spawn)
@@ -282,10 +255,7 @@ const stopFeeder = () => {
     euFeederProcess = null;
   } else {
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        "No active feeder process handle found, using pkill as fallback."
-      );
+      console.debug("[DEBUG]", "No active feeder process handle found, using pkill as fallback.");
     }
     // Use pkill as a fallback to catch manually started or orphaned processes
     pkillProcess(`${CURL_PATH}.*${EU_FIFO_PATH}`);
@@ -335,10 +305,7 @@ const eu_warm = () => {
 
     // Start curl feeder process
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        `Starting curl feeder: ${CURL_PATH} -sL ${STREAM_URL} -o ${EU_FIFO_PATH}`
-      );
+      console.debug("[DEBUG]", `Starting curl feeder: ${CURL_PATH} -sL ${STREAM_URL} -o ${EU_FIFO_PATH}`);
     }
     euFeederProcess = spawn(
       [CURL_PATH, "-sL", STREAM_URL, "-o", EU_FIFO_PATH],
@@ -419,10 +386,7 @@ const eu_start = () => {
         ];
 
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        `Spawning EU player: ${euPlayerPath} ${playerArgs.join(" ")}`
-      );
+      console.debug("[DEBUG]", `Spawning EU player: ${euPlayerPath} ${playerArgs.join(" ")}`);
     }
 
     euPlayerProcess = spawn([euPlayerPath, ...playerArgs], {
@@ -462,10 +426,7 @@ const eu_stop = (warmAfterStop = false) => {
     euPlayerProcess = null;
   } else {
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        "No active player process handle, using pkill fallback."
-      );
+      console.debug("[DEBUG]", "No active player process handle, using pkill fallback.");
     }
     // Fallback pkill based on likely player paths
     pkillProcess("ffplay.*" + EU_FIFO_PATH);
@@ -474,10 +435,7 @@ const eu_stop = (warmAfterStop = false) => {
 
   if (warmAfterStop) {
     if (process.env.NODE_ENV !== "production") {
-      console.debug(
-        "[DEBUG]",
-        "Warming feeder after stopping player (mute behavior)."
-      );
+      console.debug("[DEBUG]", "Warming feeder after stopping player (mute behavior).");
     }
     eu_warm(); // Restart the feeder
   }
@@ -583,10 +541,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
       } else {
         // If we only got EU commands or flush, or empty text
         if (process.env.NODE_ENV !== "production") {
-          console.debug(
-            "[DEBUG]",
-            "Request handled (non-TTS action or empty text)."
-          );
+          console.debug("[DEBUG]", "Request handled (non-TTS action or empty text).");
         }
         return new Response("OK (action)", { status: 200 });
       }
