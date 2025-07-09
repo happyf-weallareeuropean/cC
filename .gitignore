@@ -7,3 +7,11 @@
 !/monkey.js
 !/readme.md
 !/.gitignore
+=======
+# But track these files specifically
+!bun serv.ts
+!token-post.js
+!monkey.js
+!readme.md
+!.gitignore
+>>>>>>> 0c32b36 (Add: monkey.js and readme.md to the repository)
