@@ -1,0 +1,10 @@
+{
+  "name": "cC",
+  "version": "1.0.0",
+  "description": "ChatGPT voice server & extension",
+  "scripts": {
+    "start": "bun run server.ts",
+    "build": "bun build server.ts --compile --outfile dist/cC",
+    "build:user": "bun build monkey.js --outfile dist/monkey.user.js --target=browser --minify"
+  }
+}

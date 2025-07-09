@@ -8,7 +8,8 @@ https://github.com/user-attachments/assets/247d7223-b6c5-4d95-b0fb-2f449d070554
 
 # to setup
 i.base
-- cope this two script: one put 'bun serv.ts' run with [Bun](https://bun.sh), and monkey.js put in tapermonkey (siswser extension).
+ - copy the two scripts: run **server.ts** using [Bun](https://bun.sh) and load `monkey.js` in Tampermonkey (browser extension).
+ - optional: build a self-contained binary with `bun build server.ts --compile --outfile dist/cC`
 
 ii.perfer high quilty siri voice
 - comand + space go to sys seting
@@ -33,3 +34,5 @@ the js script realtimely watch n extrect assistant tokens from chatgpt.com ,  th
 to use cC~ req download hammerspon n userscript extension like tampermonkey on they siswser.
 
 cC~ is the short name of this proj, while the repo name made by theclearty to transport info.
+
+Install dependencies with `bun install` and run `bun run start` to launch the server.

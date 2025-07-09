@@ -1,0 +1,6 @@
+[install]
+# bun automatically installs packages when running scripts
+
+[compile]
+entrypoints = ["server.ts"]
+outdir = "dist"

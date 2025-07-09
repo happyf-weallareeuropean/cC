@@ -11,7 +11,7 @@ import path from "node:path";
 
 // --- Configuration ---
 const DEBUG = true;
-const SERVER_PORT = 80808;
+const SERVER_PORT = 8080;
 const TTS_RATE = 190; // Speech rate for the 'say' command
 
 // EU Stream Config
