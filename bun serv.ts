@@ -13,6 +13,10 @@ import path from "node:path";
 const SERVER_PORT = 65535;
 const TTS_RATE = 190; // Speech rate for the 'say' command
 
+// --- Local bin path setup ---
+const ROOT = path.dirname(import.meta.path);
+const BIN = (f: string) => path.join(ROOT, "bin", f);
+
 const logInfo = (...args: any[]) => {};
 const logWarn = (...args: any[]) => {};
 const logError = console.error.bind(console, '[ERROR]'); // Always log errors
@@ -31,14 +35,11 @@ const EU_STREAM_URL =
   EU_STREAM_URLS[Math.floor(Math.random() * EU_STREAM_URLS.length)];
 const EU_FIFO_PATH = "/tmp/eu_fifo";
 const EU_PLAYER_PATHS = [
-  "/opt/homebrew/bin/ffplay",
-  "/usr/local/bin/ffplay",
-  "/opt/homebrew/bin/mpv",
-  "/usr/local/bin/mpv",
-];
+  BIN("ffplay"),
+]; // Only ffplay, mpv support dropped
 const CURL_PATH = "/usr/bin/curl";
-const MKFIFO_PATH = "/usr/bin/mkfifo";
-const PKILL_PATH = "/usr/bin/pkill";
+const MKFIFO_PATH = BIN("mkfifo");
+const PKILL_PATH = BIN("pkill");
 
 // --- State ---
 let server: Server | null = null;
@@ -239,7 +240,7 @@ const findEuPlayer = (): string | null => {
     }
   }
   logWarn(
-    `Could not find ffplay or mpv in specified paths: ${EU_PLAYER_PATHS.join(
+    `Could not find ffplay in specified paths: ${EU_PLAYER_PATHS.join(
       ", "
     )}. EU stream playback will fail.`
   );
@@ -358,32 +359,18 @@ const eu_start = () => {
   eu_stop(false); // Stop without warming, just kill player
 
   try {
-    const playerArgs = euPlayerPath.includes("mpv")
-      ? [
-          "--no-video",
-          "--quiet",
-          "--cache=no",
-          "--demuxer-max-bytes=32",
-          "--demuxer-readahead-secs=0",
-          EU_FIFO_PATH,
-        ]
-      : [
-          "-nodisp",
-          "-autoexit",
-          "-loglevel",
-          "error",
-          "-fflags",
-          "nobuffer",
-          "-flags",
-          "low_delay",
-          "-probesize",
-          "32",
-          "-analyzeduration",
-          "0",
-          "-volume",
-          "20",
-          EU_FIFO_PATH,
-        ];
+    // Only ffplay is supported now.
+    const playerArgs = [
+      "-nodisp",
+      "-autoexit",
+      "-loglevel", "error",
+      "-fflags", "nobuffer",
+      "-flags", "low_delay",
+      "-probesize", "32",
+      "-analyzeduration", "0",
+      "-volume", "20",
+      EU_FIFO_PATH,
+    ];
 
     if (process.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", `Spawning EU player: ${euPlayerPath} ${playerArgs.join(" ")}`);
@@ -428,9 +415,8 @@ const eu_stop = (warmAfterStop = false) => {
     if (process.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", "No active player process handle, using pkill fallback.");
     }
-    // Fallback pkill based on likely player paths
+    // Fallback pkill based on likely player paths (only ffplay now)
     pkillProcess("ffplay.*" + EU_FIFO_PATH);
-    pkillProcess("mpv.*" + EU_FIFO_PATH);
   }
 
   if (warmAfterStop) {

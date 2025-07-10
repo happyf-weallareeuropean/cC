@@ -537,6 +537,23 @@
       });
     }
   }
+  // ---- Manual observer reset helper (triggered by long‑press “r”) ----
+  function reloadObservers() {
+    // Disconnect any active observers
+    if (listObserver) {
+      listObserver.disconnect();
+      listObserver = null;
+    }
+    if (detailObserver) {
+      detailObserver.disconnect();
+      detailObserver = null;
+    }
+    currentTargetNode = null;
+    lastKnownFullText = "";
+
+    // Re‑attach list observer right away
+    startListObserver();
+  }
   // Utility: wait until URL contains '/c/'
   function waitc(callback) {
     if (location.pathname.includes("/c/")) {
@@ -564,7 +581,7 @@
   (async () => {
     while (true) {
       sendEU("ds");
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       if (euok) break;
     }
   })();
@@ -579,15 +596,14 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "f" && pressTimer === null) {
         pressTimer = setTimeout(() => {
-         
           if (!shown) {
             document.execCommand("undo");
             blockKeys = true; // start blocking other key listeners
           }
           shown = true;
-           ["a", "b", "c", "d"].forEach((id) =>
-             g(id, "display", "flex", "important")
-           );
+          ["a", "b", "c", "d"].forEach((id) =>
+            g(id, "display", "flex", "important")
+          );
         }, 200);
       }
     });
@@ -609,26 +625,49 @@
       }
     });
 
-let stt = "a";
-let pressTimerS = null;
+    // Quick‑tap “r” (≤ 65 ms) → fully reload observers
+    let rDownTime = null;
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "S" && e.shiftKey && pressTimerS === null) {
-    pressTimerS = setTimeout(() => {
-      const label = stt === "a" ? "Dictate button" : "Submit dictation";
-      const btn = document.querySelector(`button[aria-label="${label}"]`);
-      if (btn) btn.click();
-      stt = stt === "a" ? "b" : "a";
-    }, 100);
-  }
-});
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "r" && rDownTime === null) {
+        rDownTime = performance.now();
+        console.log(`r‑tap detected ( ${rDownTime.toFixed(0)} ms )`);
+      }
+    });
 
-document.addEventListener("keyup", (e) => {
-  if (e.key === "S" || e.shiftKey) {
-    clearTimeout(pressTimerS);
-    pressTimerS = null;
-  }
-});
+    document.addEventListener("keyup", (e) => {
+      if (e.key === "r") {
+        const duration = performance.now() - (rDownTime ?? 0);
+        if (duration <= 65) {
+          console.log(
+            `Reloading observers on r‑tap ( ${duration.toFixed(0)} ms )`
+          );
+          reloadObservers();
+        }
+        rDownTime = null;
+      }
+    });
+
+    let stt = "a";
+    let pressTimerS = null;
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "S" && e.shiftKey && pressTimerS === null) {
+        pressTimerS = setTimeout(() => {
+          const label = stt === "a" ? "Dictate button" : "Submit dictation";
+          const btn = document.querySelector(`button[aria-label="${label}"]`);
+          if (btn) btn.click();
+          stt = stt === "a" ? "b" : "a";
+        }, 100);
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      if (e.key === "S" || e.shiftKey) {
+        clearTimeout(pressTimerS);
+        pressTimerS = null;
+      }
+    });
 
     document.addEventListener("mousemove", (e) => {
       if (!shown) {
@@ -685,7 +724,6 @@ document.addEventListener("keyup", (e) => {
     return { a, b, c, d, e, all: document.querySelectorAll(selectors) };
   }
 
-  
   waitc(() => {
     ts = T();
     setTimeout(startListObserver, 1000);
