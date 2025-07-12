@@ -1,8 +1,10 @@
 # Ignore everything
 *
-
 # Track only these files
 !/bun\ serv.ts
 !/token-post.js
 !/readme.md
 !/.gitignore
+!/bin/**
+!/bin
+**/.DS_Store
