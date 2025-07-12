@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         cC~ v.1c-i (aloud inticial n path suplemental ; click)
+// @name         cC~ (Jul 10, 2025)
 // @homepageURL  https://github.com/happyf-weallareeuropean/cC
 // @namespace    https://github.com/happyf-weallareeuropean
 // @version      cacf-ae-bh
 // @author       happyf-weallareeuropean
-// @description  try to take over the world! during closed ur eyes, no setInterval
+// @description  close ur eyes or open ur eyes all better for eyes
+// @updateURL    https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
 // @match     *://chatgpt.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=openai.com
 // @connect      localhost
@@ -539,11 +540,6 @@
   }
   // ---- Manual observer reset helper (triggered by long‑press “r”) ----
   function reloadObservers() {
-    // Disconnect any active observers
-    if (listObserver) {
-      listObserver.disconnect();
-      listObserver = null;
-    }
     if (detailObserver) {
       detailObserver.disconnect();
       detailObserver = null;
@@ -551,8 +547,7 @@
     currentTargetNode = null;
     lastKnownFullText = "";
 
-    // Re‑attach list observer right away
-    startListObserver();
+    processLatestMessage();
   }
   // Utility: wait until URL contains '/c/'
   function waitc(callback) {
@@ -572,17 +567,16 @@
     }
   }
 
-  // Run the observer logic once the page loads.
-  // On route changes, `onRouteChange()` is called again for a fresh attach.
-  // only kick off our observer _after_ we're on a /c/ route
-  // Send play signal once the userscript is ready.
-  sendEU("lp");
 
+  sendEU("lp");
   (async () => {
+    let now = Date.now();
     while (true) {
+      if (euok) break;
+      if (Date.now() - now >= 1000) break;
       sendEU("ds");
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      if (euok) break;
+      now = Date.now();
     }
   })();
   let ts = {};
@@ -682,11 +676,7 @@
     });
   }
 
-  // Generic style helper.
-  // Accepts:
-  //   • a key string that maps into ts
-  //   • a single DOM element
-  //   • a NodeList / array of DOM elements
+  
   function g(target, prop, val, important) {
     // When a key string is passed, dereference inside ts first.
     const nodeOrList = typeof target === "string" ? ts[target] : target;
@@ -710,8 +700,7 @@
       }
     });
   }
-  // Return both the per‑key map *and* a convenient 'all' array
-  // fetched in one composite selector.  No loops at runtime.
+  
   function T() {
     const selectors = `
       #page-header,
