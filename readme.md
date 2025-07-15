@@ -20,8 +20,11 @@ happyf close eye! ()
 
 
 ---
-Reference:
 
+cridit to Johannes Thyroff(https://github.com/JThyroff/WideGPT). 
+
+
+other Reference:
 easy to setup if already had hamm n monkey, just quick copes (with u flycut) n u on fly.
 
 a free open source chatgpt chromium extension(tempermonkey. safari or webkit base i not try it would work or not but u can try it, whatever what would more complax then on chromium i guess) + hammerspoon, tts locally use macos build in diverse nature voices.
