@@ -2,7 +2,7 @@
 // @name         cC~ (Jul 10, 2025)
 // @homepageURL  https://github.com/happyf-weallareeuropean/cC
 // @namespace    https://github.com/happyf-weallareeuropean
-// @version      cacf-ae-bh
+// @version      a
 // @author       felixy happyfceleste & Johannes Thyroff(https://github.com/JThyroff/WideGPT) 
 // @description  close ur eyes or open ur eyes all better for eyes
 // @updateURL    https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
