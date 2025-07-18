@@ -7,4 +7,5 @@
 !/.gitignore
 !/bin/**
 !/bin
+!/package-lock.json
 **/.DS_Store
