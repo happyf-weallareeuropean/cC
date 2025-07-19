@@ -51,6 +51,7 @@ let euFeederProcess: Subprocess | null = null;
 let euPlayerProcess: Subprocess | null = null;
 let lastEUPing = 0;
 let euPingTimer: Timer | null = null;
+let isEUPlaying = false;
 
 // --- Interfaces ---
 interface SpeakPayload {
@@ -348,8 +349,13 @@ const eu_start = () => {
     logError("Cannot start EU stream: Player path not found.");
     return;
   }
+  if (isEUPlaying) {
+    logInfo("EU stream ffplay already marked running.");
+    return;
+  }
+  isEUPlaying = true;
   if (euPlayerProcess && euPlayerProcess.pid) {
-    logInfo("EU stream player is already running.");
+    logInfo("EU stream ffplay already running.");
     return;
   }
 
@@ -362,7 +368,6 @@ const eu_start = () => {
     // Only ffplay is supported now.
     const playerArgs = [
       "-nodisp",
-      "-autoexit",
       "-loglevel", "error",
       "-fflags", "nobuffer",
       "-flags", "low_delay",
@@ -391,6 +396,7 @@ const eu_start = () => {
         if (euPlayerProcess && euPlayerProcess.pid === proc?.pid) {
           euPlayerProcess = null;
         }
+        isEUPlaying = false;
       },
     });
 
@@ -398,8 +404,9 @@ const eu_start = () => {
       throw new Error("Failed to get valid process handle for EU player.");
     }
     logInfo(
-      `EU stream player started (PID: ${euPlayerProcess.pid}). Playing from ${EU_FIFO_PATH}`
+      `EU stream ffplay started (PID: ${euPlayerProcess.pid}). Playing from ${EU_FIFO_PATH}`
     );
+    isEUPlaying = true;
   } catch (error) {
     logError("Error starting EU stream player:", error);
     euPlayerProcess = null; // Ensure handle is cleared on error
@@ -411,6 +418,7 @@ const eu_stop = (warmAfterStop = false) => {
   if (euPlayerProcess) {
     killProcess(euPlayerProcess, "EU player");
     euPlayerProcess = null;
+    isEUPlaying = false;
   } else {
     if (process.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", "No active player process handle, using pkill fallback.");
