@@ -21,7 +21,7 @@ happyf close eye! ()
 
 ---
 
-cridit to Johannes Thyroff(https://github.com/JThyroff/WideGPT). 
+cridit Johannes Thyroff(https://github.com/JThyroff/WideGPT). 
 
 ---
 other Reference:
