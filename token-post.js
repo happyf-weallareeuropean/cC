@@ -4,7 +4,7 @@
 // @namespace    https://github.com/happyf-weallareeuropean
 // @version      a.a
 // @author       felixy happyfceleste & Johannes Thyroff(https://github.com/JThyroff/WideGPT)
-// @description  close ur eyes or open ur eyes all better for eyes
+// @description  automate tts for chatgpt. Hide UI bloat on chatgpt, gemini, claude, mistral.
 // @updateURL    https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
 // @downloadURL  https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
 // @match     *://chatgpt.com/*
@@ -601,23 +601,20 @@
     const L = 650;
     let rDownTime = null;
     let pressTimerS = null;
+    let uistate = false;
 
     function s() {
       let pressTimer = null;
       let shown = false;
 
       document.addEventListener("keydown", (e) => {
-        if (e.key === "f" && pressTimer === null) {
-          pressTimer = setTimeout(() => {
-            if (!shown) {
-              document.execCommand("undo");
-              blockKeys = true; // start blocking other key listeners
-            }
-            shown = true;
-            ["a", "b", "c", "d"].forEach((id) =>
-              g(id, "display", "flex", "important")
-            );
-          }, 200);
+        if (e.key === "f" && pressTimer === null && !uistate) {
+          pressTimer = performance.now(); 
+        } else if (uistate) {
+          ["a", "b", "c", "d"].forEach((id) =>
+            g(id, "display", "none", "important")
+          );
+          uistate = false;
         }
         if (e.key === "r" && rDownTime === null) {
           rDownTime = performance.now();
@@ -635,22 +632,18 @@
 
       document.addEventListener("keyup", (e) => {
         if (e.key === "f") {
-          // clear pending timer
-          clearTimeout(pressTimer);
-          pressTimer = null;
-
-          // if elements were shown, hide them now
-          if (shown) {
+          const duration = performance.now() - (pressTimer ?? 0);
+          if (duration <= 40) {
             ["a", "b", "c", "d"].forEach((id) =>
-              g(id, "display", "none", "important")
+              g(id, "display", "flex", "important")
             );
-            blockKeys = false; // stop blocking; re‑enable other key listeners
-            shown = false;
+            uistate = true;
           }
+          pressTimer = null;
         }
         if (e.key === "r") {
           const duration = performance.now() - (rDownTime ?? 0);
-          if (duration <= 50) {
+          if (duration <= 40) {
             reloadObservers();
           }
           rDownTime = null;
@@ -661,7 +654,7 @@
         }
       });
 
-      document.addEventListener("mousemove", (e) => {
+      /*document.addEventListener("mousemove", (e) => {
         if (!shown) {
           const y = e.clientY;
           //more sug to use f hotkey to show, delete didnot none so juterfy like this for now
@@ -669,9 +662,9 @@
           g("b", "display", y < l ? "none" : "none", "important");
           /*const Ł = y > L;
         g("b", "display", Ł ? "flex" : "none", "important");
-        g("c", "display", Ł ? "flex" : "none", "important");*/
+        g("c", "display", Ł ? "flex" : "none", "important");
         }
-      });
+      });*/
     }
 
     function g(target, prop, val, important) {
