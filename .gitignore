@@ -1,6 +1,6 @@
 # Ignore everything
 *
-# Track only these files
+# Track only 
 !/bun\ serv.ts
 !/token-post.js
 !/readme.md
