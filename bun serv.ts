@@ -15,7 +15,17 @@ const TTS_RATE = 190; // Speech rate for the 'say' command
 
 // --- Local bin path setup ---
 const ROOT = path.dirname(import.meta.path);
-const BIN = (f: string) => path.join(ROOT, "bin", f);
+const BIN = (f: string) => {
+  const platformDir = path.join(ROOT, "bin", process.platform);
+  const archDir = path.join(platformDir, process.arch);
+  const archPath = path.join(archDir, f);
+  if (fs.existsSync(archPath)) return archPath;
+
+  const platPath = path.join(platformDir, f);
+  if (fs.existsSync(platPath)) return platPath;
+
+  return path.join(ROOT, "bin", f);
+};
 
 const logInfo = (...args: any[]) => {};
 const logWarn = (...args: any[]) => {};
