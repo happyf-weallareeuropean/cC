@@ -588,17 +588,7 @@ const stopServer = () => {
   }
 };
 
-// --- Health Check ---
-/*setInterval(() => {
-  logDebug(
-    `[HealthCheck] isSpeaking: ${isSpeaking}, queueLength: ${
-      speakQueue.length
-    }, euFeederPID: ${euFeederProcess?.pid ?? "none"}, euPlayerPID: ${
-      euPlayerProcess?.pid ?? "none"
-    }`
-  );
-}, 30 * 1000); // Check every 30 seconds
-*/
+
 // Optional Electron integration (guarded so Bun tests won’t fail)
 let app, globalShortcut;
 try {
