@@ -349,9 +349,7 @@
       return null;
     }
 
-    // -------------------------------------------------------------------
     // 3) Observers for new messages + partial tokens
-    // -------------------------------------------------------------------
     function processLatestMessage() {
       but_sdtb();
       const assistantMessages = document.querySelectorAll(
