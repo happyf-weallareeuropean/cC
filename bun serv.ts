@@ -1,11 +1,4 @@
-import {
-  serve,
-  type Server,
-  Bun,
-  spawn,
-  spawnSync,
-  type Subprocess,
-} from "bun";
+import { serve, type Server, spawn, spawnSync, type Subprocess } from "bun";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -15,7 +8,7 @@ const TTS_RATE = 190; // Speech rate for the 'say' command
 
 const logInfo = (...args: any[]) => {};
 const logWarn = (...args: any[]) => {};
-const logError = console.error.bind(console, '[ERROR]'); // Always log errors
+const logError = console.error.bind(console, "[ERROR]"); // Always log errors
 
 // A pool of reliable ad‑free European classical streams
 const EU_STREAM_URLS = [
@@ -25,10 +18,8 @@ const EU_STREAM_URLS = [
   "http://116.202.241.212:8010/stream",
   "http://148.251.43.231:8742/160",
 ];
-
 // Pick one at random from the array (avoid out‑of‑bounds undefined)
-const EU_STREAM_URL =
-  EU_STREAM_URLS[Math.floor(Math.random() * EU_STREAM_URLS.length)];
+const EU_STREAM_URL = EU_STREAM_URLS[Math.floor(Math.random() * EU_STREAM_URLS.length)];
 const EU_FIFO_PATH = "/tmp/eu_fifo";
 const EU_PLAYER_PATHS = [
   "/opt/homebrew/bin/ffplay",
@@ -64,11 +55,7 @@ interface ReplacePayload {
 }
 
 // --- Utility Functions ---
-const killProcess = (
-  proc: Subprocess | null,
-  name: string,
-  signal: NodeJS.Signals | number = "SIGTERM"
-) => {
+const killProcess = (proc: Subprocess | null, name: string, signal: NodeJS.Signals | number = "SIGTERM") => {
   if (proc && proc.pid) {
     if (process.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", `Attempting to kill ${name} process (PID: ${proc.pid}) with signal ${signal}...`);
@@ -98,9 +85,7 @@ const pkillProcess = (pattern: string) => {
       }
     } else {
       logWarn(
-        `pkill for pattern "${pattern}" exited with code ${
-          result.exitCode
-        }. Stderr: ${result.stderr.toString()}`
+        `pkill for pattern "${pattern}" exited with code ${result.exitCode}. Stderr: ${result.stderr.toString()}`
       );
     }
   } catch (error) {
@@ -132,9 +117,8 @@ const enqueueSpeech = (text: string) => {
   const trimmedText = text.trim();
   if (!trimmedText) return;
 
-  // Basic sanitation (remove potential non-UTF8 chars that `say` might dislike)
-  // This is a very basic filter; more robust UTF8 validation might be needed
-  const sanitizedText = trimmedText.replace(/[\u{80}-\u{FFFF}]/gu, ""); // Keep ASCII + basic Latin supplement? Adjust as needed.
+  // (remove chars that `say` n europe dislike)
+  const sanitizedText = trimmedText.replace(/[^\u{0}-\u{1E79}]/gu, " "); // keep all europe safe item to tts
 
   if (!sanitizedText) {
     logWarn("Text became empty after sanitization, skipping enqueue.");
@@ -156,6 +140,7 @@ const enqueueSpeech = (text: string) => {
   }
 };
 
+const coretts = (textToSpeak) => ["say", "-r", String(TTS_RATE), textToSpeak];
 const startNextSpeech = () => {
   if (process.env.NODE_ENV !== "production") {
     console.debug("[DEBUG]", `startNextSpeech called. isSpeaking: ${isSpeaking}, queueLength: ${speakQueue.length}`);
@@ -176,10 +161,8 @@ const startNextSpeech = () => {
   logInfo(`Speaking: "${textToSpeak.substring(0, 50)}..."`);
 
   try {
-    const coretts = ["say", "-r", String(TTS_RATE), textToSpeak];
-    currentSpeechProcess = spawn(coretts, {
+    currentSpeechProcess = spawn(coretts(textToSpeak), {
       stdin: "ignore", // No input needed
-      stdout: "inherit", // Inherit stdout/stderr for potential messages/errors from 'say'
       stderr: "inherit",
       onExit: (proc, exitCode, signalCode, error) => {
         if (process.env.NODE_ENV !== "production") {
@@ -195,12 +178,10 @@ const startNextSpeech = () => {
           if (process.env.NODE_ENV !== "production") {
             console.debug("[DEBUG]", "Current speech finished, checking queue for next.");
           }
-          // Use setTimeout to avoid potential deep recursion if 'say' fails instantly
-          setTimeout(startNextSpeech, 0);
+
+          startNextSpeech();
         } else {
-          logWarn(
-            `Received onExit callback for a stale 'say' process (PID: ${proc.pid}). Ignoring.`
-          );
+          logWarn(`Received onExit callback for a stale 'say' process (PID: ${proc.pid}). Ignoring.`);
         }
       },
     });
@@ -239,9 +220,7 @@ const findEuPlayer = (): string | null => {
     }
   }
   logWarn(
-    `Could not find ffplay or mpv in specified paths: ${EU_PLAYER_PATHS.join(
-      ", "
-    )}. EU stream playback will fail.`
+    `Could not find ffplay or mpv in specified paths: ${EU_PLAYER_PATHS.join(", ")}. EU stream playback will fail.`
   );
   return null;
 };
@@ -269,9 +248,7 @@ const eu_warm = () => {
   // Use the selected stream URL, guard against undefined
   const STREAM_URL = EU_STREAM_URL;
   if (!STREAM_URL) {
-    logError(
-      "EU_STREAM_URL is undefined – check stream list. Aborting warm‑up."
-    );
+    logError("EU_STREAM_URL is undefined – check stream list. Aborting warm‑up.");
     return;
   }
 
@@ -293,11 +270,7 @@ const eu_warm = () => {
     }
     const mkfifoResult = spawnSync([MKFIFO_PATH, EU_FIFO_PATH]);
     if (mkfifoResult.exitCode !== 0) {
-      throw new Error(
-        `mkfifo failed with code ${
-          mkfifoResult.exitCode
-        }: ${mkfifoResult.stderr.toString()}`
-      );
+      throw new Error(`mkfifo failed with code ${mkfifoResult.exitCode}: ${mkfifoResult.stderr.toString()}`);
     }
     if (process.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", `FIFO created successfully.`);
@@ -307,33 +280,26 @@ const eu_warm = () => {
     if (process.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", `Starting curl feeder: ${CURL_PATH} -sL ${STREAM_URL} -o ${EU_FIFO_PATH}`);
     }
-    euFeederProcess = spawn(
-      [CURL_PATH, "-sL", STREAM_URL, "-o", EU_FIFO_PATH],
-      {
-        stdin: "ignore",
-        stdout: "ignore", // Ignore stdout/stderr unless debugging curl itself
-        stderr: "ignore",
-        onExit: (proc, exitCode, signalCode, error) => {
-          logWarn(
-            `EU feeder (curl) process (PID: ${
-              proc?.pid ?? "unknown"
-            }) exited. Code: ${exitCode}, Signal: ${signalCode}`
-          );
-          if (error) logError("Feeder exit error:", error);
-          // If the feeder dies unexpectedly, we might want to clear the handle
-          if (euFeederProcess && euFeederProcess.pid === proc?.pid) {
-            euFeederProcess = null;
-          }
-        },
-      }
-    );
+    euFeederProcess = spawn([CURL_PATH, "-sL", STREAM_URL, "-o", EU_FIFO_PATH], {
+      stdin: "ignore",
+      stdout: "ignore", // Ignore stdout/stderr unless debugging curl itself
+      stderr: "ignore",
+      onExit: (proc, exitCode, signalCode, error) => {
+        logWarn(
+          `EU feeder (curl) process (PID: ${proc?.pid ?? "unknown"}) exited. Code: ${exitCode}, Signal: ${signalCode}`
+        );
+        if (error) logError("Feeder exit error:", error);
+        // If the feeder dies unexpectedly, we might want to clear the handle
+        if (euFeederProcess && euFeederProcess.pid === proc?.pid) {
+          euFeederProcess = null;
+        }
+      },
+    });
 
     if (!euFeederProcess || !euFeederProcess.pid) {
       throw new Error("Failed to get valid process handle for curl feeder.");
     }
-    logInfo(
-      `EU feeder (curl) started (PID: ${euFeederProcess.pid}). Streaming to ${EU_FIFO_PATH}`
-    );
+    logInfo(`EU feeder (curl) started (PID: ${euFeederProcess.pid}). Streaming to ${EU_FIFO_PATH}`);
   } catch (error) {
     logError("Error during eu_warm:", error);
     // Clean up if feeder process might have started before error
@@ -359,14 +325,7 @@ const eu_start = () => {
 
   try {
     const playerArgs = euPlayerPath.includes("mpv")
-      ? [
-          "--no-video",
-          "--quiet",
-          "--cache=no",
-          "--demuxer-max-bytes=32",
-          "--demuxer-readahead-secs=0",
-          EU_FIFO_PATH,
-        ]
+      ? ["--no-video", "--quiet", "--cache=no", "--demuxer-max-bytes=32", "--demuxer-readahead-secs=0", EU_FIFO_PATH]
       : [
           "-nodisp",
           "-autoexit",
@@ -381,7 +340,7 @@ const eu_start = () => {
           "-analyzeduration",
           "0",
           "-volume",
-          "20",
+          "10",
           EU_FIFO_PATH,
         ];
 
@@ -394,11 +353,7 @@ const eu_start = () => {
       stdout: "inherit", // Show player output/errors
       stderr: "inherit",
       onExit: (proc, exitCode, signalCode, error) => {
-        logInfo(
-          `EU Player process (PID: ${
-            proc?.pid ?? "unknown"
-          }) exited. Code: ${exitCode}, Signal: ${signalCode}`
-        );
+        logInfo(`EU Player process (PID: ${proc?.pid ?? "unknown"}) exited. Code: ${exitCode}, Signal: ${signalCode}`);
         if (error) logError("EU Player exit error:", error);
         // Clear the handle only if it matches the exited process
         if (euPlayerProcess && euPlayerProcess.pid === proc?.pid) {
@@ -410,9 +365,7 @@ const eu_start = () => {
     if (!euPlayerProcess || !euPlayerProcess.pid) {
       throw new Error("Failed to get valid process handle for EU player.");
     }
-    logInfo(
-      `EU stream player started (PID: ${euPlayerProcess.pid}). Playing from ${EU_FIFO_PATH}`
-    );
+    logInfo(`EU stream player started (PID: ${euPlayerProcess.pid}). Playing from ${EU_FIFO_PATH}`);
   } catch (error) {
     logError("Error starting EU stream player:", error);
     euPlayerProcess = null; // Ensure handle is cleared on error
@@ -523,14 +476,12 @@ const handleRequest = async (request: Request): Promise<Response> => {
         logInfo("playEU request received.");
         eu_start();
         // Return immediately after handling EU command if no text is present
-        if (!payload.text?.trim())
-          return new Response("OK (EU Play)", { status: 200 });
+        if (!payload.text?.trim()) return new Response("OK (EU Play)", { status: 200 });
       } else if (payload.stopEU) {
         logInfo("stopEU request received.");
         eu_stop(true); // stopEU implies mute/rewarm
         // Return immediately after handling EU command if no text is present
-        if (!payload.text?.trim())
-          return new Response("OK (EU Stop)", { status: 200 });
+        if (!payload.text?.trim()) return new Response("OK (EU Stop)", { status: 200 });
       }
 
       // TTS Handling
@@ -553,11 +504,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
   } else if (path === "/replace" && method === "POST") {
     try {
       const payload = (await request.json()) as ReplacePayload;
-      if (
-        typeof payload !== "object" ||
-        payload === null ||
-        typeof payload.text !== "string"
-      ) {
+      if (typeof payload !== "object" || payload === null || typeof payload.text !== "string") {
         return new Response("Error: Invalid JSON or missing 'text' field.", {
           status: 400,
         });
@@ -606,9 +553,7 @@ const startServer = () => {
         return new Response("Internal Server Error", { status: 500 });
       },
     });
-    logInfo(
-      `🎙️ TTS Server (using 'say') started on http://localhost:${server.port}`
-    );
+    logInfo(`🎙️ TTS Server (using 'say') started on http://localhost:${server.port}`);
     eu_warm(); // Warm up the EU stream on server start
   } catch (error) {
     logError(`Failed to start server on port ${SERVER_PORT}:`, error);
@@ -686,5 +631,314 @@ startServer();
 // Bun automatically keeps running while the server is active.
 // We add an extra interval just to be explicit if needed, but server.stop() and process.exit() handle termination.
 // setInterval(() => {}, 1 << 30); // Keep alive indefinitely (optional)
-
 logInfo("Script initialization complete. Server is running.");
+
+// --- ai cleanup client --------
+import { GoogleGenAI, createUserContent } from "@google/genai";
+
+// Configuration
+const CONFIG = {
+  API_KEY: "AIzaSyDCnSghmG3Ai9vacHnfk_ZFyXRtYoiP9jw", ///todo move to env
+
+  MODEL_NAME: "gemini-2.5-flash-lite-preview-06-17",
+
+  GENERATION_CONFIG: {
+    temperature: 1,
+    topK: 32,
+    topP: 0.95,
+    maxOutputTokens: 32000,
+  },
+  SYSTEM_INSTRUCTION: `i.main goal: base on full ax tree, ur goal is from there rever to show off exactly last-ai-response(LAR) ; no conversation with user or any other else just pure show off LAR. also the ax tree are noicy avoid any noises eg but not limited like response hist/thoughts/ui etc. also if were none match, the show off shall be empty (null output).
+  ii.sub goal: Ingros - facemaks, special simples, non european chars. Replace - simples like '+' '-' if is in math context into 'plus' 'minus' specialy '-' can be mutible means, this just an example the goal is as smartly adatively replace make how to prenowce more direct in europe word.
+  iii.main goal - no ur own imgine adds: to make sure the LAR shall as 100% rever as base on the ax tree, no ur own imgine adds, cuz the goal is show or mirr the LAR as it is`,
+};
+
+// Initialize the GenAI client
+if (!CONFIG.API_KEY) {
+  console.error("[ERROR] GEMINI_API_KEY environment variable is not set!");
+  console.error("Please set it by running: export GEMINI_API_KEY='your-api-key-here'");
+}
+const genAI = new GoogleGenAI({ apiKey: CONFIG.API_KEY || "" });
+
+/**
+ * Main handler function for serverless execution
+ * @param {Object} event - The event object containing the request data
+ * @returns {Promise<Object>} The response object
+ */
+async function handleGeminiRequest(event) {
+  try {
+    // Parse the incoming request
+    const { prompt, conversation = [] } = parseRequest(event);
+
+    if (!prompt) {
+      return createResponse(400, { error: "No prompt provided" });
+    }
+
+    // Create a chat session (new Gen AI SDK syntax)
+    const chat = genAI.chats.create({
+      model: CONFIG.MODEL_NAME,
+      config: {
+        systemInstruction: CONFIG.SYSTEM_INSTRUCTION,
+        generationConfig: CONFIG.GENERATION_CONFIG,
+      },
+      history: [],
+    });
+
+    // Send the user's prompt
+    const result = await chat.sendMessage({ message: prompt });
+
+    // Robustly extract the model’s text regardless of SDK version
+    let text;
+    try {
+      if (typeof result === "string") {
+        text = result; // Some SDK calls return string directly
+      } else if (typeof result.text === "function") {
+        text = result.text(); // New GenAI SDK
+      } else if (result.response && typeof result.response.text === "function") {
+        text = result.response.text(); // Old pattern
+      } else {
+        text = JSON.stringify(result); // Fallback: dump raw JSON
+      }
+    } catch (e) {
+      console.warn("⚠️ Unable to extract text from Gemini response:", e);
+      text = "⚠️ Failed to extract text from Gemini response.";
+    }
+
+    return createResponse(200, { response: text });
+  } catch (error) {
+    console.error("Error processing request:", error);
+    return createResponse(500, {
+      error: "Failed to process request",
+      details: error.message,
+    });
+  }
+}
+
+/**
+ * Parse the incoming request
+ * @param {Object} event - The event object
+ * @returns {Object} Parsed request data
+ */
+function parseRequest(event) {
+  // Handle different event formats (API Gateway, direct invocation, etc.)
+  let body = {};
+
+  if (event.body) {
+    try {
+      body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+    } catch (e) {
+      console.warn("Failed to parse request body", e);
+    }
+  }
+
+  return {
+    prompt: body.prompt || event.prompt,
+    conversation: body.conversation || event.conversation || [],
+  };
+}
+
+/**
+ * Create a standardized response object
+ * @param {number} statusCode - HTTP status code
+ * @param {Object} body - Response body
+ * @returns {Object} Formatted response
+ */
+function createResponse(statusCode, body) {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+    },
+    body: JSON.stringify(body, null, 2),
+  };
+}
+
+// Bun HTTP server using Bun.serve API
+Bun.serve({
+  port: 41111,
+  async fetch(req) {
+    try {
+      // Log incoming request
+      const timestamp = new Date().toISOString();
+      console.log(`\n[${timestamp}] Incoming ${req.method} request to ${req.url}`);
+
+      // Handle CORS preflight
+      if (req.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+          },
+        });
+      }
+
+      // Only allow GET and POST
+      if (!["GET", "POST"].includes(req.method)) {
+        return new Response(JSON.stringify({ error: "Only GET and POST methods are allowed" }), {
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Handle image analysis endpoint
+      if (req.method === "POST" && new URL(req.url).pathname === "/analyze-image") {
+        try {
+          const data = await req.json();
+
+          if (!data.image || !data.prompt) {
+            throw new Error("Missing required fields: image and prompt are required");
+          }
+
+          // Create user content with both text and image parts
+          const contents = [
+            data.prompt,
+            {
+              inlineData: {
+                mimeType: "image/jpeg",
+                data: data.image,
+              },
+            },
+          ];
+
+          const result = await genAI.models.generateContent({
+            model: CONFIG.MODEL_NAME,
+            contents: createUserContent(contents),
+            config: {
+              systemInstruction: CONFIG.SYSTEM_INSTRUCTION,
+              generationConfig: CONFIG.GENERATION_CONFIG,
+            },
+          });
+          const analysis = result.text();
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              analysis,
+              timestamp: new Date().toISOString(),
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        } catch (error) {
+          console.error("Error processing image:", error);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: error.message,
+              timestamp: new Date().toISOString(),
+            }),
+            {
+              status: 400,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
+      }
+
+      // Process prompt from GET query or POST body
+      let prompt = "";
+
+      if (req.method === "GET") {
+        const url = new URL(req.url);
+        const searchParams = url.searchParams;
+        prompt = Array.from(searchParams.entries())
+          .map(([key, value]) => `${key}=${value}`)
+          .join("\n");
+      } else {
+        // POST body as text
+        prompt = (await req.text()).trim();
+      }
+
+      const result = await handleGeminiRequest({
+        prompt: prompt || "No content provided",
+        conversation: [],
+      });
+
+      // Log and send the response
+      console.log(`[${new Date().toISOString()}] Sending response (${result.body.length} bytes)`);
+
+      return new Response(result.body, {
+        status: result.statusCode,
+        headers: result.headers,
+      });
+    } catch (error) {
+      console.error("Error processing request:", error);
+      return new Response(
+        JSON.stringify(
+          {
+            error: "Failed to process request",
+            details: error.message,
+          },
+          null,
+          2
+        ),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+  },
+});
+
+console.log(`Gemini API proxy server running at http://localhost:41111/`);
+console.log("Endpoints:");
+console.log("  GET  /?your=prompt");
+console.log('  POST / -d "Your prompt here"');
+console.log('  POST /analyze-image -d \'{"image": "base64data...", "prompt": "Describe this image"}\'');
+
+// Export for serverless environments
+export { handleGeminiRequest as handleRequest };
+
+/*  on screen hotlink
+local q = ""
+local g = "https://www.google.com/search?q=" .. q .. "?utm_source=europeansostorng"
+local i = "https://www.google.com/search?tbm=isch&q=" .. q .. "?utm_source=europeansostorng"
+local c = "https://chatgpt.com/?q=" .. q .. "?utm_source=europeansostorng"
+
+-- what if i let
+function hotlink(q)
+    -- ne european: open a link in the default browser, but only if it looks like a valid http(s) url
+    if type(q) == "string" and q:match("^https?://[%w%.%-_/%%?&=]+$") then
+        hs.execute(string.format('open "%s"', q))
+    else
+        hs.alert.show("⚠️ Not a valid URL: " .. tostring(q), 1.2)
+    end
+end
+function capt(q)
+   local cmd = string.format('screencapture -x "%s"', q)
+   local ok, out, err, rc = hs.execute(cmd, true)
+   if ok and rc == 0 then
+       hs.alert.show("✅ Screenshot saved as: " .. q, 1.2)
+   else
+       hs.alert.show("❌ Screenshot failed: " .. tostring(err), 1.5)
+   end
+end
+function ocr()
+  --procese got big string of results, both position and letter
+  --now altly just past to gemini
+end
+function mouse()
+  local pos = hs.mouse.absolutePosition()
+  local x   = math.floor(pos.x)
+  local y   = math.floor(pos.y)
+  print(string.format("Mouse at: %d, %d", x, y))
+end*/
