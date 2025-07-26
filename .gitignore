@@ -1,6 +1,5 @@
-# Ignore everything
 *
-# Track only these files
+
 !/bun\ serv.ts
 !/token-post.js
 !/readme.md
@@ -8,4 +7,5 @@
 !/bin/**
 !/bin
 !/package-lock.json
+!/ai\ post.lua
 **/.DS_Store
