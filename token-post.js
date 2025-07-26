@@ -132,9 +132,7 @@
     const sel_resp = 'div[class~="markdown"][class~="prose"]';
 
     function ttsend({ text, flushQueue = false, onSuccess = null }) {
-      const payload = flushQueue
-        ? { flushQueue: true, text: text }
-        : { text: text };
+      const payload = flushQueue ? { flushQueue: true, text: text } : { text: text };
       GM_xmlhttpRequest({
         method: "POST",
         url: `http://localhost:${port}/speak`,
@@ -144,12 +142,7 @@
           if (response.status === 200) {
             if (onSuccess) onSuccess();
           } else {
-            console.error(
-              "❌ ttsend failed:",
-              response.status,
-              response.statusText,
-              response.responseText
-            );
+            console.error("❌ ttsend failed:", response.status, response.statusText, response.responseText);
           }
         },
         onerror(err) {
@@ -246,11 +239,7 @@
           if (res.status === 200) {
             console.log(`✅ sendEU(${cmd}) → 200 OK`);
           } else {
-            console.error(
-              `❌ sendEU(${cmd}) → ${res.status}`,
-              res.statusText,
-              res.responseText.trim()
-            );
+            console.error(`❌ sendEU(${cmd}) → ${res.status}`, res.statusText, res.responseText.trim());
           }
         },
         onerror(err) {
@@ -268,21 +257,14 @@
       }
 
       let last = scb.getBoundingClientRect();
-      console.log(
-        `📌 start   y=${last.y.toFixed(1)}, gap=${(
-          window.innerHeight -
-          (last.y + last.height)
-        ).toFixed(1)}`
-      );
+      console.log(`📌 start   y=${last.y.toFixed(1)}, gap=${(window.innerHeight - (last.y + last.height)).toFixed(1)}`);
 
       const id = setInterval(() => {
         const cur = scb.getBoundingClientt();
         const gap = window.innerHeight - (cur.y + cur.height);
 
         if (cur.y !== last.y || cur.height !== last.height) {
-          console.log(
-            `📍 change  y=${cur.y.toFixed(1)}, gap=${gap.toFixed(1)}`
-          );
+          console.log(`📍 change  y=${cur.y.toFixed(1)}, gap=${gap.toFixed(1)}`);
           last = cur;
         }
       }, every);
@@ -357,20 +339,13 @@
         if (element) {
           const firstTurn =
             element.closest("article")?.parentElement ||
-            element.closest('[data-testid^="conversation-turn-"]')
-              ?.parentElement ||
+            element.closest('[data-testid^="conversation-turn-"]')?.parentElement ||
             element;
-          console.log(
-            `Using container found by selector: "${selector}", actual element:`,
-            firstTurn
-          );
+          console.log(`Using container found by selector: "${selector}", actual element:`, firstTurn);
           return firstTurn;
         }
       }
-      console.warn(
-        "Could not find chat list container using selectors:",
-        sel_chatlist
-      );
+      console.warn("Could not find chat list container using selectors:", sel_chatlist);
       return null;
     }
 
@@ -384,33 +359,22 @@
       );
       if (assistantMessages.length === 0) return;
 
-      const latestAssistantMessage =
-        assistantMessages[assistantMessages.length - 1];
+      const latestAssistantMessage = assistantMessages[assistantMessages.length - 1];
       const targetNode = latestAssistantMessage.querySelector(sel_resp);
 
       if (!targetNode) return;
       const initialCleanText = getCleanText(targetNode).trim();
-      console.log(
-        "🔎 Initial detection: latestAssistantMessage element:",
-        latestAssistantMessage
-      );
-      console.log(
-        "🔎 Initial detection: targetNode (assistant content):",
-        targetNode
-      );
+      console.log("🔎 Initial detection: latestAssistantMessage element:", latestAssistantMessage);
+      console.log("🔎 Initial detection: targetNode (assistant content):", targetNode);
       // Skip the interim "thinking…" container; wait for the real reply
       if (targetNode && targetNode.classList.contains("result-thinking")) {
-        console.log(
-          "⏳ Placeholder thinking node detected, waiting for real content."
-        );
+        console.log("⏳ Placeholder thinking node detected, waiting for real content.");
         return;
       }
 
       if (targetNode !== currentTargetNode) {
         but_sdtb();
-        console.log(
-          "✅ New assistant message content node detected. Attaching detail observer. c:"
-        );
+        console.log("✅ New assistant message content node detected. Attaching detail observer. c:");
         lastKnownFullText = "";
         if (detailObserver) {
           detailObserver.disconnect();
@@ -469,11 +433,7 @@
 
             lastKnownFullText = currentCleanText;
             // if streaming appears to be finished, flush any trailing fragment
-            if (
-              currentCleanText.endsWith(".") ||
-              currentCleanText.endsWith("!") ||
-              currentCleanText.endsWith("?")
-            ) {
+            if (currentCleanText.endsWith(".") || currentCleanText.endsWith("!") || currentCleanText.endsWith("?")) {
               if (wordBuf.trim()) {
                 ttsend({ text: wordBuf });
                 wordBuf = "";
@@ -481,10 +441,7 @@
             }
           }
           // Case 2 — editor rewrote text (rare but happens while streaming)
-          else if (
-            currentCleanText.length < lastKnownFullText.length &&
-            lastKnownFullText !== ""
-          ) {
+          else if (currentCleanText.length < lastKnownFullText.length && lastKnownFullText !== "") {
             console.log("🔄 Text reset or changed significantly.");
             lastKnownFullText = currentCleanText;
           }
@@ -605,11 +562,9 @@
 
       document.addEventListener("keydown", (e) => {
         if (e.key === "f" && pressTimer === null && !uistate) {
-          pressTimer = performance.now(); 
+          pressTimer = performance.now();
         } else if (uistate) {
-          ["a", "b", "c", "d"].forEach((id) =>
-            g(id, "display", "none", "important")
-          );
+          ["a", "b", "c", "d"].forEach((id) => g(id, "display", "none", "important"));
           uistate = false;
         }
         if (e.key === "r" && rDownTime === null) {
@@ -618,7 +573,6 @@
         }
         if (e.key === "s" && pressTimerS === null) {
           pressTimerS = performance.now();
-          
         }
       });
 
@@ -626,9 +580,7 @@
         if (e.key === "f") {
           const duration = performance.now() - (pressTimer ?? 0);
           if (duration <= 40) {
-            ["a", "b", "c", "d"].forEach((id) =>
-              g(id, "display", "flex", "important")
-            );
+            ["a", "b", "c", "d"].forEach((id) => g(id, "display", "flex", "important"));
             uistate = true;
           }
           pressTimer = null;
@@ -674,9 +626,7 @@
 
       // Apply style to one or many elements transparently.
       if (nodeOrList instanceof NodeList || Array.isArray(nodeOrList)) {
-        nodeOrList.forEach((el) =>
-          el?.style?.setProperty(prop, val, important)
-        );
+        nodeOrList.forEach((el) => el?.style?.setProperty(prop, val, important));
       } else {
         nodeOrList.style.setProperty(prop, val, important);
       }
@@ -1025,7 +975,6 @@ margin-block-start: 0 !important; Remove space before blocks */
 //end credit to open source extension wide gpt
 `);
   }
-
 
   if (host === "gemini.google.com") {
     insCss(`/* === General Layout Widening === */
