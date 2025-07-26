@@ -20,7 +20,11 @@ happyf close eye! ()
 
 
 ---
-Reference:
+
+cridit Johannes Thyroff(https://github.com/JThyroff/WideGPT). 
+
+---
+other Reference:
 
 easy to setup if already had hamm n monkey, just quick copes (with u flycut) n u on fly.
 
