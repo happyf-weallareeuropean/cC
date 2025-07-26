@@ -638,7 +638,7 @@ import { GoogleGenAI, createUserContent } from "@google/genai";
 
 // Configuration
 const CONFIG = {
-  API_KEY: "AIzaSyDCnSghmG3Ai9vacHnfk_ZFyXRtYoiP9jw", ///todo move to env
+  API_KEY: process.env.GEMINI_API_KEY,
 
   MODEL_NAME: "gemini-2.5-flash-lite-preview-06-17",
 
