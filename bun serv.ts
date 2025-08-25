@@ -1,25 +1,35 @@
-import {
-  serve,
-  type Server,
-  Bun,
-  spawn,
-  spawnSync,
-  type Subprocess,
-} from "bun";
-import fs from "node:fs";
-import path from "node:path";
+import { serve, type Server, spawn, spawnSync, type Subprocess } from "bun";
+import { spawn as ptyspawn, type Pty } from "bun-pty";
+
+// --- Local bin resolver (ship-ready) ---
+const HERE_DIR = import.meta.dir; // absolute folder for this file
+const BIN_DIR = `${HERE_DIR}/bin`;
+const PLATFORM_DIR = (() => {
+  if (Bun.platform === "darwin" && Bun.arch.startsWith("arm")) return `${BIN_DIR}/mac-aarch`;
+  // Fallback: use a generic mapping if other platforms are added later
+  return `${BIN_DIR}/${Bun.platform}-${Bun.arch}`;
+})();
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    return await Bun.file(p).exists();
+  } catch {
+    return false;
+  }
+}
+async function resolveExisting(paths: string[]): Promise<string | null> {
+  for (const p of paths) if (await exists(p)) return p;
+  return null;
+}
 
 // --- Configuration ---
 const SERVER_PORT = 65535;
 const TTS_RATE = 190; // Speech rate for the 'say' command
-
-// --- Local bin path setup ---
-const ROOT = path.dirname(import.meta.path);
-const BIN = (f: string) => path.join(ROOT, "bin", f);
+const isProd = Bun.env.NODE_ENV === "production";
 
 const logInfo = (...args: any[]) => {};
 const logWarn = (...args: any[]) => {};
-const logError = console.error.bind(console, '[ERROR]'); // Always log errors
+const logError = console.error.bind(console, "[ERROR]"); // Always log errors
 
 // A pool of reliable ad‑free European classical streams
 const EU_STREAM_URLS = [
@@ -28,18 +38,16 @@ const EU_STREAM_URLS = [
   // "http://icecast.vrtcdn.be/klaracontinuo-high.mp3",
   "http://116.202.241.212:8010/stream",
   "http://148.251.43.231:8742/160",
+  "https://mediaserviceslive.akamaized.net/hls/live/2038317/classic2/index.m3u8",
+  "https://pianosolo.streamguys1.com/live",//had speak
 ];
-
 // Pick one at random from the array (avoid out‑of‑bounds undefined)
-const EU_STREAM_URL =
-  EU_STREAM_URLS[Math.floor(Math.random() * EU_STREAM_URLS.length)];
+const EU_STREAM_URL = EU_STREAM_URLS[Math.floor(Math.random() * EU_STREAM_URLS.length)];
 const EU_FIFO_PATH = "/tmp/eu_fifo";
-const EU_PLAYER_PATHS = [
-  BIN("ffplay"),
-]; // Only ffplay, mpv support dropped
-const CURL_PATH = "/usr/bin/curl";
-const MKFIFO_PATH = BIN("mkfifo");
-const PKILL_PATH = BIN("pkill");
+const EU_PLAYER_PATHS = [`${PLATFORM_DIR}/mpv/mpv`, "/opt/homebrew/bin/mpv", "/usr/local/bin/mpv", "/usr/bin/mpv"];
+const CURL_PATH = (await resolveExisting([`${PLATFORM_DIR}/curl/curl`, "/usr/bin/curl", "/opt/homebrew/bin/curl"])) || "curl";
+const MKFIFO_PATH = (await resolveExisting([`${PLATFORM_DIR}/mkfifo/mkfifo`, "/usr/bin/mkfifo", "/opt/homebrew/bin/mkfifo"])) || "mkfifo";
+const PKILL_PATH = (await resolveExisting([`${PLATFORM_DIR}/pkill/pkill`, "/usr/bin/pkill", "/opt/homebrew/bin/pkill"])) || "pkill";
 
 // --- State ---
 let server: Server | null = null;
@@ -47,11 +55,12 @@ let speakQueue: string[] = [];
 let isSpeaking = false;
 let currentSpeechProcess: Subprocess | null = null;
 let euPlayerPath: string | null = null;
-let euFeederProcess: Subprocess | null = null;
-let euPlayerProcess: Subprocess | null = null;
+let euStarting = false;
+let euMpv: Pty | null = null;
+let euMuted = true; // default muted
+// Removed: let euFeederProcess, let euPlayerProcess
 let lastEUPing = 0;
-let euPingTimer: Timer | null = null;
-let isEUPlaying = false;
+let euPingTimer: ReturnType<typeof setInterval> | null = null;
 
 // --- Interfaces ---
 interface SpeakPayload {
@@ -66,17 +75,13 @@ interface ReplacePayload {
 }
 
 // --- Utility Functions ---
-const killProcess = (
-  proc: Subprocess | null,
-  name: string,
-  signal: NodeJS.Signals | number = "SIGTERM"
-) => {
+const killProcess = (proc: Subprocess | null, name: string, signal: number = 15) => {
   if (proc && proc.pid) {
-    if (process.env.NODE_ENV !== "production") {
+    if (Bun.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", `Attempting to kill ${name} process (PID: ${proc.pid}) with signal ${signal}...`);
     }
-    const killed = proc.kill(signal as number); // Bun's types might mismatch NodeJS.Signals sometimes
-    if (process.env.NODE_ENV !== "production") {
+    const killed = proc.kill(signal);
+    if (Bun.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", `${name} process kill signal sent (success: ${killed}).`);
     }
     return killed;
@@ -85,25 +90,22 @@ const killProcess = (
 };
 
 const pkillProcess = (pattern: string) => {
-  if (process.env.NODE_ENV !== "production") {
+  if (Bun.env.NODE_ENV !== "production") {
     console.debug("[DEBUG]", `Attempting to pkill processes matching: ${pattern}`);
   }
   try {
     const result = spawnSync([PKILL_PATH, "-f", pattern]);
     if (result.exitCode === 0) {
-      if (process.env.NODE_ENV !== "production") {
+      if (Bun.env.NODE_ENV !== "production") {
         console.debug("[DEBUG]", `pkill successful for pattern: ${pattern}`);
       }
     } else if (result.exitCode === 1) {
-      if (process.env.NODE_ENV !== "production") {
+      if (Bun.env.NODE_ENV !== "production") {
         console.debug("[DEBUG]", `No processes found matching pattern: ${pattern}`);
       }
     } else {
-      logWarn(
-        `pkill for pattern "${pattern}" exited with code ${
-          result.exitCode
-        }. Stderr: ${result.stderr.toString()}`
-      );
+      const stderrText = new TextDecoder().decode(result.stderr);
+      logWarn(`pkill for pattern "${pattern}" exited with code ${result.exitCode}. Stderr: ${stderrText}`);
     }
   } catch (error) {
     logError(`Error executing pkill for pattern "${pattern}":`, error);
@@ -114,10 +116,10 @@ const pkillProcess = (pattern: string) => {
 
 const stopSayProcess = () => {
   if (currentSpeechProcess) {
-    if (process.env.NODE_ENV !== "production") {
+    if (Bun.env.NODE_ENV !== "production") {
       console.debug("[DEBUG]", "Stopping current 'say' process.");
     }
-    killProcess(currentSpeechProcess, "say", "SIGKILL"); // 'say' might need SIGKILL
+    killProcess(currentSpeechProcess, "say", 9); // SIGKILL
     currentSpeechProcess = null;
     isSpeaking = false; // Ensure state is reset
   }
@@ -127,21 +129,14 @@ const flushQueue = () => {
   logInfo("Flushing speech queue and stopping current speech.");
   speakQueue = [];
   stopSayProcess();
+  eumute();
 };
 
 const enqueueSpeech = (text: string) => {
   logInfo(`[${new Date().toISOString()}] Received incoming letter: "${text}"`);
-  const trimmedText = text.trim();
-  if (!trimmedText) return;
 
-  // Basic sanitation (remove potential non-UTF8 chars that `say` might dislike)
-  // This is a very basic filter; more robust UTF8 validation might be needed
-  const sanitizedText = trimmedText.replace(/[\u{80}-\u{FFFF}]/gu, ""); // Keep ASCII + basic Latin supplement? Adjust as needed.
-
-  if (!sanitizedText) {
-    logWarn("Text became empty after sanitization, skipping enqueue.");
-    return;
-  }
+  // (remove chars that `say` n europe dislike)
+  const sanitizedText = text.replace(/[^\u{20}-\u{39}\u{3B}-\u{1E79}\u{2000}-\u{218F}\u{2200}-\u{23FF}\u{2460}-\u{24FF}]/gu, " "); // keep all europe safe item to tts
 
   if (speakQueue.length === 0) {
     speakQueue.push(sanitizedText);
@@ -153,13 +148,23 @@ const enqueueSpeech = (text: string) => {
       speakQueue[speakQueue.length - 1] += sanitizedText;
     }
   }
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProd) {
     console.debug("[DEBUG]", `Enqueued: "${sanitizedText}". Queue length: ${speakQueue.length}`);
   }
 };
 
+function warmtts() {
+  const p = ptyspawn("say", ["-i", "-r", String(TTS_RATE)], {
+    name: "xterm-256color",
+    cols: 80,
+    rows: 24,
+  });
+  p.onData((d) => Bun.stdout.write(d));
+  p.write(".");
+}
+const coretts = (textToSpeak) => ["say", "-r", String(TTS_RATE), textToSpeak];
 const startNextSpeech = () => {
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProd) {
     console.debug("[DEBUG]", `startNextSpeech called. isSpeaking: ${isSpeaking}, queueLength: ${speakQueue.length}`);
   }
   if (isSpeaking || speakQueue.length === 0) {
@@ -178,13 +183,11 @@ const startNextSpeech = () => {
   logInfo(`Speaking: "${textToSpeak.substring(0, 50)}..."`);
 
   try {
-    const coretts = ["say", "-r", String(TTS_RATE), textToSpeak];
-    currentSpeechProcess = spawn(coretts, {
+    currentSpeechProcess = spawn(coretts(textToSpeak), {
       stdin: "ignore", // No input needed
-      stdout: "inherit", // Inherit stdout/stderr for potential messages/errors from 'say'
       stderr: "inherit",
       onExit: (proc, exitCode, signalCode, error) => {
-        if (process.env.NODE_ENV !== "production") {
+        if (!isProd) {
           console.debug("[DEBUG]", `'say' process exited. Code: ${exitCode}, Signal: ${signalCode}`);
         }
         if (error) {
@@ -194,20 +197,18 @@ const startNextSpeech = () => {
         if (currentSpeechProcess && currentSpeechProcess.pid === proc.pid) {
           currentSpeechProcess = null;
           isSpeaking = false;
-          if (process.env.NODE_ENV !== "production") {
+          if (!isProd) {
             console.debug("[DEBUG]", "Current speech finished, checking queue for next.");
           }
-          // Use setTimeout to avoid potential deep recursion if 'say' fails instantly
-          setTimeout(startNextSpeech, 0);
+
+          startNextSpeech();
         } else {
-          logWarn(
-            `Received onExit callback for a stale 'say' process (PID: ${proc.pid}). Ignoring.`
-          );
+          logWarn(`Received onExit callback for a stale 'say' process (PID: ${proc.pid}). Ignoring.`);
         }
       },
     });
 
-    if (process.env.NODE_ENV !== "production") {
+    if (!isProd) {
       console.debug("[DEBUG]", `Started 'say' process (PID: ${currentSpeechProcess.pid})`);
     }
 
@@ -233,223 +234,104 @@ const replaceSpeechImmediately = (newText: string) => {
 
 // --- EU Classical Stream Functions ---
 
-const findEuPlayer = (): string | null => {
-  for (const p of EU_PLAYER_PATHS) {
-    if (fs.existsSync(p)) {
-      logInfo(`Found EU player: ${p}`);
-      return p;
-    }
+const findEuPlayer = async (): Promise<string | null> => {
+  // Prefer shipped binary under bin/, then PATH, then known fallbacks
+  const localFirst = await resolveExisting([EU_PLAYER_PATHS[0]]);
+  if (localFirst) {
+    logInfo(`Found EU player: ${localFirst}`);
+    return localFirst;
   }
-  logWarn(
-    `Could not find ffplay in specified paths: ${EU_PLAYER_PATHS.join(
-      ", "
-    )}. EU stream playback will fail.`
-  );
+  const inPath = Bun.which("mpv");
+  if (inPath) {
+    logInfo(`Found EU player in PATH: ${inPath}`);
+    return inPath;
+  }
+  const fallback = await resolveExisting(EU_PLAYER_PATHS.slice(1));
+  if (fallback) {
+    logInfo(`Found EU player (fallback): ${fallback}`);
+    return fallback;
+  }
+  logWarn(`Could not find mpv in local bin, PATH, or fallbacks: ${EU_PLAYER_PATHS.join(", ")}`);
   return null;
 };
 
-const stopFeeder = () => {
-  if (process.env.NODE_ENV !== "production") {
-    console.debug("[DEBUG]", "Stopping EU stream feeder (curl)...");
-  }
-  if (euFeederProcess) {
-    killProcess(euFeederProcess, "curl feeder");
-    euFeederProcess = null;
-  } else {
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", "No active feeder process handle found, using pkill as fallback.");
-    }
-    // Use pkill as a fallback to catch manually started or orphaned processes
-    pkillProcess(`${CURL_PATH}.*${EU_FIFO_PATH}`);
-  }
-};
-
-const eu_warm = () => {
-  logInfo("Warming EU stream feeder...");
-  stopFeeder(); // Ensure any previous feeder is stopped
-
-  // Use the selected stream URL, guard against undefined
-  const STREAM_URL = EU_STREAM_URL;
-  if (!STREAM_URL) {
-    logError(
-      "EU_STREAM_URL is undefined – check stream list. Aborting warm‑up."
-    );
-    return;
-  }
-
-  // Ensure FIFO exists
-  try {
-    // Attempt to remove existing FIFO first (ignore error if it doesn't exist)
-    try {
-      fs.unlinkSync(EU_FIFO_PATH);
-      if (process.env.NODE_ENV !== "production") {
-        console.debug("[DEBUG]", `Removed existing FIFO: ${EU_FIFO_PATH}`);
-      }
-    } catch {
-      /* Ignore */
-    }
-
-    // Create new FIFO
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", `Creating FIFO: ${EU_FIFO_PATH}`);
-    }
-    const mkfifoResult = spawnSync([MKFIFO_PATH, EU_FIFO_PATH]);
-    if (mkfifoResult.exitCode !== 0) {
-      throw new Error(
-        `mkfifo failed with code ${
-          mkfifoResult.exitCode
-        }: ${mkfifoResult.stderr.toString()}`
-      );
-    }
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", `FIFO created successfully.`);
-    }
-
-    // Start curl feeder process
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", `Starting curl feeder: ${CURL_PATH} -sL ${STREAM_URL} -o ${EU_FIFO_PATH}`);
-    }
-    euFeederProcess = spawn(
-      [CURL_PATH, "-sL", STREAM_URL, "-o", EU_FIFO_PATH],
-      {
-        stdin: "ignore",
-        stdout: "ignore", // Ignore stdout/stderr unless debugging curl itself
-        stderr: "ignore",
-        onExit: (proc, exitCode, signalCode, error) => {
-          logWarn(
-            `EU feeder (curl) process (PID: ${
-              proc?.pid ?? "unknown"
-            }) exited. Code: ${exitCode}, Signal: ${signalCode}`
-          );
-          if (error) logError("Feeder exit error:", error);
-          // If the feeder dies unexpectedly, we might want to clear the handle
-          if (euFeederProcess && euFeederProcess.pid === proc?.pid) {
-            euFeederProcess = null;
-          }
-        },
-      }
-    );
-
-    if (!euFeederProcess || !euFeederProcess.pid) {
-      throw new Error("Failed to get valid process handle for curl feeder.");
-    }
-    logInfo(
-      `EU feeder (curl) started (PID: ${euFeederProcess.pid}). Streaming to ${EU_FIFO_PATH}`
-    );
-  } catch (error) {
-    logError("Error during eu_warm:", error);
-    // Clean up if feeder process might have started before error
-    if (euFeederProcess) killProcess(euFeederProcess, "curl feeder on error");
-    euFeederProcess = null;
-  }
-};
-
-const eu_start = () => {
+const eu_start = async () => {
   if (!euPlayerPath) {
     logError("Cannot start EU stream: Player path not found.");
     return;
   }
-  if (isEUPlaying) {
-    logInfo("EU stream ffplay already marked running.");
+  if (euMpv) {
+    logInfo("EU (mpv) already running.");
     return;
   }
-  isEUPlaying = true;
-  if (euPlayerProcess && euPlayerProcess.pid) {
-    logInfo("EU stream ffplay already running.");
+  if (euStarting) {
+    logInfo("EU stream start already in progress; skipping.");
     return;
   }
-
-  logInfo("Starting EU stream player...");
-
-  // Ensure previous player process is definitely gone
-  eu_stop(false); // Stop without warming, just kill player
-
+  euStarting = true;
+  logInfo("Starting EU stream (mpv)...");
   try {
-    // Only ffplay is supported now.
-    const playerArgs = [
-      "-nodisp",
-      "-loglevel", "error",
-      "-fflags", "nobuffer",
-      "-flags", "low_delay",
-      "-probesize", "32",
-      "-analyzeduration", "0",
-      "-volume", "20",
-      EU_FIFO_PATH,
-    ];
+    // mpv direct playback; default muted per requirement
+    euMpv = ptyspawn(euPlayerPath, [
+      "--profile=low-latency",
+      "--demuxer-donate-buffer=no",
+      "--ad-queue-enable=no",
+      "--keep-open=no",
+      "--cache=no",
+      "--no-video",
+      "--quiet",
+      "--mute=yes",
+      "--no-ytdl",
+      "--af=volume=0.15",
+      EU_STREAM_URL,
+    ]);
 
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", `Spawning EU player: ${euPlayerPath} ${playerArgs.join(" ")}`);
-    }
-
-    euPlayerProcess = spawn([euPlayerPath, ...playerArgs], {
-      stdin: "ignore",
-      stdout: "inherit", // Show player output/errors
-      stderr: "inherit",
-      onExit: (proc, exitCode, signalCode, error) => {
-        logInfo(
-          `EU Player process (PID: ${
-            proc?.pid ?? "unknown"
-          }) exited. Code: ${exitCode}, Signal: ${signalCode}`
-        );
-        if (error) logError("EU Player exit error:", error);
-        // Clear the handle only if it matches the exited process
-        if (euPlayerProcess && euPlayerProcess.pid === proc?.pid) {
-          euPlayerProcess = null;
-        }
-        isEUPlaying = false;
-      },
+    euMuted = true;
+    euMpv.onData((d) => {
+      if (!isProd) Bun.stdout.write(d);
     });
-
-    if (!euPlayerProcess || !euPlayerProcess.pid) {
-      throw new Error("Failed to get valid process handle for EU player.");
-    }
-    logInfo(
-      `EU stream ffplay started (PID: ${euPlayerProcess.pid}). Playing from ${EU_FIFO_PATH}`
-    );
-    isEUPlaying = true;
+    euMpv.onExit?.(() => {
+      euMpv = null;
+    });
+    logInfo("EU (mpv) started.");
   } catch (error) {
-    logError("Error starting EU stream player:", error);
-    euPlayerProcess = null; // Ensure handle is cleared on error
+    logError("Error starting mpv:", error);
+  } finally {
+    euStarting = false;
   }
 };
 
-const eu_stop = (warmAfterStop = false) => {
-  logInfo("Stopping EU stream player...");
-  if (euPlayerProcess) {
-    killProcess(euPlayerProcess, "EU player");
-    euPlayerProcess = null;
-    isEUPlaying = false;
-  } else {
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", "No active player process handle, using pkill fallback.");
-    }
-    // Fallback pkill based on likely player paths (only ffplay now)
-    pkillProcess("ffplay.*" + EU_FIFO_PATH);
-  }
-
-  if (warmAfterStop) {
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[DEBUG]", "Warming feeder after stopping player (mute behavior).");
-    }
-    eu_warm(); // Restart the feeder
-  }
+let eusafe = true;
+const eu_flip_mute = () => {
+  if (!eusafe) return;
+  eusafe = false;
+  euMpv.write("m\r");
+  euMuted = !euMuted;
+  eusafe = true;
 };
+const eumute = () => {
+  if (!euMuted) eu_flip_mute();
+};
+const euunmute = () => {
+  if (euMuted) eu_flip_mute();
+};  
+//const eu_mute = (boolean) => {};
 
 const startEUPingWatchdog = () => {
-  // Always reset the interval so lpEU can relaunch after a mute
-  if (euPingTimer) {
-    clearInterval(euPingTimer);
-    euPingTimer = null;
-  }
+  if (euPingTimer) return; // already watching
   euPingTimer = setInterval(() => {
     const now = Date.now();
     if (now - lastEUPing > 1000) {
       logInfo("⏱️ No lpEU ping in >1 s. Muting EU stream.");
-      eu_stop(true);
-      clearInterval(euPingTimer!);
-      euPingTimer = null;
+      eumute();
     }
   }, 1000);
+};
+
+const eu_exitmpv = () => {
+  if (euMpv) {
+    euMpv.kill();
+  }
 };
 
 // --- HTTP Server ---
@@ -459,7 +341,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
   const path = url.pathname;
   const method = request.method;
 
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProd) {
     console.debug("[DEBUG]", `Received request: ${method} ${path}`);
   }
 
@@ -475,11 +357,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
           throw new Error("Parsed JSON is not an object");
         }
       } catch (jsonError) {
-        logWarn(
-          `JSON parse failed: ${
-            jsonError instanceof Error ? jsonError.message : jsonError
-          }. Falling back to using raw body as text.`
-        );
+        logWarn(`JSON parse failed: ${jsonError instanceof Error ? jsonError.message : jsonError}. Falling back to using raw body as text.`);
         // Fallback: Use the raw body text if JSON parsing fails *or* doesn't yield an object
         // Ensure payload is at least an empty object before assigning text
         payload = {};
@@ -489,17 +367,17 @@ const handleRequest = async (request: Request): Promise<Response> => {
       // --- EU Ping Handling ---
       if ((payload as any).lpEU) {
         lastEUPing = Date.now();
-        if (process.env.NODE_ENV !== "production") {
+        if (!isProd) {
           console.debug("[DEBUG]", "🔄 lpEU ping received.");
         }
         startEUPingWatchdog();
-        eu_start(); // Start (or resume) playback on each lpEU ping, mirroring Lua design
+        euunmute();
         return new Response("lpEU pong", { status: 200 });
       }
 
       if ((payload as any).dsEU) {
         lastEUPing = Date.now();
-        if (process.env.NODE_ENV !== "production") {
+        if (!isProd) {
           console.debug("[DEBUG]", "📍 dsEU ping received.");
         }
         return new Response("dsEU updated", { status: 200 });
@@ -515,16 +393,14 @@ const handleRequest = async (request: Request): Promise<Response> => {
       // EU Controls
       if (payload.playEU) {
         logInfo("playEU request received.");
-        eu_start();
+        euunmute(); // only unmute if muted
         // Return immediately after handling EU command if no text is present
-        if (!payload.text?.trim())
-          return new Response("OK (EU Play)", { status: 200 });
+        if (!payload.text?.trim()) return new Response("OK (EU Play)", { status: 200 });
       } else if (payload.stopEU) {
         logInfo("stopEU request received.");
-        eu_stop(true); // stopEU implies mute/rewarm
+        eu_mute(); // only mute if unmuted
         // Return immediately after handling EU command if no text is present
-        if (!payload.text?.trim())
-          return new Response("OK (EU Stop)", { status: 200 });
+        if (!payload.text?.trim()) return new Response("OK (EU Stop)", { status: 200 });
       }
 
       // TTS Handling
@@ -534,7 +410,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
         return new Response("OK (enqueued)", { status: 200 });
       } else {
         // If we only got EU commands or flush, or empty text
-        if (process.env.NODE_ENV !== "production") {
+        if (!isProd) {
           console.debug("[DEBUG]", "Request handled (non-TTS action or empty text).");
         }
         return new Response("OK (action)", { status: 200 });
@@ -547,11 +423,7 @@ const handleRequest = async (request: Request): Promise<Response> => {
   } else if (path === "/replace" && method === "POST") {
     try {
       const payload = (await request.json()) as ReplacePayload;
-      if (
-        typeof payload !== "object" ||
-        payload === null ||
-        typeof payload.text !== "string"
-      ) {
+      if (typeof payload !== "object" || payload === null || typeof payload.text !== "string") {
         return new Response("Error: Invalid JSON or missing 'text' field.", {
           status: 400,
         });
@@ -583,13 +455,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
 
 // --- Server Control ---
 
-const startServer = () => {
+const startServer = async () => {
   if (server) {
     logInfo(`Server already running on port ${SERVER_PORT}`);
     return;
   }
 
-  euPlayerPath = findEuPlayer(); // Find player on startup
+  euPlayerPath = await findEuPlayer(); // Find player on startup
 
   try {
     server = serve({
@@ -600,17 +472,16 @@ const startServer = () => {
         return new Response("Internal Server Error", { status: 500 });
       },
     });
-    logInfo(
-      `🎙️ TTS Server (using 'say') started on http://localhost:${server.port}`
-    );
-    eu_warm(); // Warm up the EU stream on server start
+    logInfo(`🎙️ TTS Server (using 'say') started on http://localhost:${server.port}`);
+    eu_start();
+    // void eu_warm();
   } catch (error) {
     logError(`Failed to start server on port ${SERVER_PORT}:`, error);
     server = null;
   }
 };
 
-const stopServer = () => {
+const stopServer = async () => {
   if (server) {
     logInfo("Stopping TTS Server...");
     server.stop(true); // true for graceful shutdown
@@ -621,37 +492,15 @@ const stopServer = () => {
   }
   // Stop related processes
   flushQueue(); // Stops current speech and clears queue
-  stopFeeder();
-  eu_stop(false); // Stop player without re-warming
-
-  // Clean up FIFO
-  try {
-    if (fs.existsSync(EU_FIFO_PATH)) {
-      if (process.env.NODE_ENV !== "production") {
-        console.debug("[DEBUG]", `Removing FIFO on shutdown: ${EU_FIFO_PATH}`);
-      }
-      fs.unlinkSync(EU_FIFO_PATH);
-    }
-  } catch (error) {
-    logError(`Error removing FIFO ${EU_FIFO_PATH} on shutdown:`, error);
-  }
+  eu_exitmpv();
 };
 
-// --- Health Check ---
-/*setInterval(() => {
-  logDebug(
-    `[HealthCheck] isSpeaking: ${isSpeaking}, queueLength: ${
-      speakQueue.length
-    }, euFeederPID: ${euFeederProcess?.pid ?? "none"}, euPlayerPID: ${
-      euPlayerProcess?.pid ?? "none"
-    }`
-  );
-}, 30 * 1000); // Check every 30 seconds
-*/
 // Optional Electron integration (guarded so Bun tests won’t fail)
-let app, globalShortcut;
+/*let app, globalShortcut;
 try {
-  ({ app, globalShortcut } = require("electron"));
+  const electron = await import("electron");
+  app = electron.app;
+  globalShortcut = electron.globalShortcut;
   app.whenReady().then(() => {
     globalShortcut.register("Shift+Right", () => {
       console.log("Right Shift pressed");
@@ -660,25 +509,369 @@ try {
 } catch {
   // Electron not available (e.g., running under Bun), skip integration
 }
+*/
 
 // --- Shutdown Hook ---
-const cleanupAndExit = (signal: string) => {
+const cleanupAndExit = async (signal: string) => {
   logInfo(`Received ${signal}. Starting graceful shutdown...`);
-  stopServer();
+  await stopServer();
   logInfo("Cleanup complete. Exiting.");
   process.exit(0);
 };
 
-process.on("SIGINT", () => cleanupAndExit("SIGINT")); // Ctrl+C
-process.on("SIGTERM", () => cleanupAndExit("SIGTERM")); // kill
+process.on("SIGINT", () => {
+  void cleanupAndExit("SIGINT");
+}); // Ctrl+C
+process.on("SIGTERM", () => {
+  void cleanupAndExit("SIGTERM");
+}); // kill
 
 // --- Main Execution ---
 logInfo("Starting script...");
-startServer();
+void startServer();
 
 // Keep the script running until interrupted
 // Bun automatically keeps running while the server is active.
 // We add an extra interval just to be explicit if needed, but server.stop() and process.exit() handle termination.
 // setInterval(() => {}, 1 << 30); // Keep alive indefinitely (optional)
-
 logInfo("Script initialization complete. Server is running.");
+
+// --- ai cleanup client --------
+import { GoogleGenAI, createUserContent } from "@google/genai";
+
+// Configuration
+const CONFIG = {
+  API_KEY: Bun.env.GEMINI_API_KEY,
+
+  MODEL_NAME: "gemini-2.5-flash-lite-preview-06-17",
+
+  GENERATION_CONFIG: {
+    temperature: 1,
+    topK: 32,
+    topP: 0.95,
+    maxOutputTokens: 32000,
+  },
+  SYSTEM_INSTRUCTION: `i.main goal: base on full ax tree, ur goal is from there rever to show off exactly last-ai-response(LAR) ; no conversation with user or any other else just pure show off LAR. also the ax tree are noicy avoid any noises eg but not limited like response hist/thoughts/ui etc. also if were none match, the show off shall be empty (null output).
+  ii.sub goal: Ingros - facemaks, special simples, non european chars. Replace - simples like '+' '-' if is in math context into 'plus' 'minus' specialy '-' can be mutible means, this just an example the goal is as smartly adatively replace make how to prenowce more direct in europe word.
+  iii.main goal - no ur own imgine adds: to make sure the LAR shall as 100% rever as base on the ax tree, no ur own imgine adds, cuz the goal is show or mirr the LAR as it is`,
+};
+
+// Initialize the GenAI client
+if (!CONFIG.API_KEY) {
+  console.error("[ERROR] GEMINI_API_KEY environment variable is not set!");
+  console.error("Please set it by running: export GEMINI_API_KEY='your-api-key-here'");
+}
+const genAI = new GoogleGenAI({ apiKey: CONFIG.API_KEY || "" });
+
+/**
+ * Main handler function for serverless execution
+ * @param {Object} event - The event object containing the request data
+ * @returns {Promise<Object>} The response object
+ */
+async function handleGeminiRequest(event) {
+  try {
+    // Parse the incoming request
+    const { prompt, conversation = [] } = parseRequest(event);
+
+    if (!prompt) {
+      return createResponse(400, { error: "No prompt provided" });
+    }
+
+    // Create a chat session (new Gen AI SDK syntax)
+    const chat = genAI.chats.create({
+      model: CONFIG.MODEL_NAME,
+      config: {
+        systemInstruction: CONFIG.SYSTEM_INSTRUCTION,
+        generationConfig: CONFIG.GENERATION_CONFIG,
+      },
+      history: [],
+    });
+
+    // Send the user's prompt
+    const result = await chat.sendMessage({ message: prompt });
+
+    // Robustly extract the model’s text regardless of SDK version
+    let text;
+    try {
+      if (typeof result === "string") {
+        text = result; // Some SDK calls return string directly
+      } else if (typeof result.text === "function") {
+        text = result.text(); // New GenAI SDK
+      } else if (result.response && typeof result.response.text === "function") {
+        text = result.response.text(); // Old pattern
+      } else {
+        text = JSON.stringify(result); // Fallback: dump raw JSON
+      }
+    } catch (e) {
+      console.warn("⚠️ Unable to extract text from Gemini response:", e);
+      text = "⚠️ Failed to extract text from Gemini response.";
+    }
+
+    return createResponse(200, { response: text });
+  } catch (error) {
+    console.error("Error processing request:", error);
+    return createResponse(500, {
+      error: "Failed to process request",
+      details: error.message,
+    });
+  }
+}
+
+/**
+ * Parse the incoming request
+ * @param {Object} event - The event object
+ * @returns {Object} Parsed request data
+ */
+function parseRequest(event) {
+  // Handle different event formats (API Gateway, direct invocation, etc.)
+  let body = {};
+
+  if (event.body) {
+    try {
+      body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+    } catch (e) {
+      console.warn("Failed to parse request body", e);
+    }
+  }
+
+  return {
+    prompt: body.prompt || event.prompt,
+    conversation: body.conversation || event.conversation || [],
+  };
+}
+
+/**
+ * Create a standardized response object
+ * @param {number} statusCode - HTTP status code
+ * @param {Object} body - Response body
+ * @returns {Object} Formatted response
+ */
+function createResponse(statusCode, body) {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "OPTIONS,POST,GET",
+    },
+    body: JSON.stringify(body, null, 2),
+  };
+}
+
+// Bun HTTP server using Bun.serve API
+Bun.serve({
+  port: 41111,
+  async fetch(req) {
+    try {
+      // Log incoming request
+      const timestamp = new Date().toISOString();
+      console.log(`\n[${timestamp}] Incoming ${req.method} request to ${req.url}`);
+
+      // Handle CORS preflight
+      if (req.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+          },
+        });
+      }
+
+      // Only allow GET and POST
+      if (!["GET", "POST"].includes(req.method)) {
+        return new Response(JSON.stringify({ error: "Only GET and POST methods are allowed" }), {
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      // Handle image analysis endpoint
+      if (req.method === "POST" && new URL(req.url).pathname === "/analyze-image") {
+        try {
+          const data = await req.json();
+
+          if (!data.image || !data.prompt) {
+            throw new Error("Missing required fields: image and prompt are required");
+          }
+
+          // Create user content with both text and image parts
+          const contents = [
+            data.prompt,
+            {
+              inlineData: {
+                mimeType: "image/jpeg",
+                data: data.image,
+              },
+            },
+          ];
+
+          const result = await genAI.models.generateContent({
+            model: CONFIG.MODEL_NAME,
+            contents: createUserContent(contents),
+            config: {
+              systemInstruction: CONFIG.SYSTEM_INSTRUCTION,
+              generationConfig: CONFIG.GENERATION_CONFIG,
+            },
+          });
+          const analysis = result.text();
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              analysis,
+              timestamp: new Date().toISOString(),
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        } catch (error) {
+          console.error("Error processing image:", error);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: error.message,
+              timestamp: new Date().toISOString(),
+            }),
+            {
+              status: 400,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+              },
+            }
+          );
+        }
+      }
+
+      // Process prompt from GET query or POST body
+      let prompt = "";
+
+      if (req.method === "GET") {
+        const url = new URL(req.url);
+        const searchParams = url.searchParams;
+        prompt = Array.from(searchParams.entries())
+          .map(([key, value]) => `${key}=${value}`)
+          .join("\n");
+      } else {
+        // POST body as text
+        prompt = (await req.text()).trim();
+      }
+
+      const result = await handleGeminiRequest({
+        prompt: prompt || "No content provided",
+        conversation: [],
+      });
+
+      // Log and send the response
+      console.log(`[${new Date().toISOString()}] Sending response (${result.body.length} bytes)`);
+
+      return new Response(result.body, {
+        status: result.statusCode,
+        headers: result.headers,
+      });
+    } catch (error) {
+      console.error("Error processing request:", error);
+      return new Response(
+        JSON.stringify(
+          {
+            error: "Failed to process request",
+            details: error.message,
+          },
+          null,
+          2
+        ),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    }
+  },
+});
+
+console.log(`Gemini API proxy server running at http://localhost:41111/`);
+console.log("Endpoints:");
+console.log("  GET  /?your=prompt");
+console.log('  POST / -d "Your prompt here"');
+console.log('  POST /analyze-image -d \'{"image": "base64data...", "prompt": "Describe this image"}\'');
+
+// Export for serverless environments
+export { handleGeminiRequest as handleRequest };
+
+//inspect
+// ffmpeg screenshot
+// Async ffmpeg screenshot to PNG bytes using Bun.spawn and Web Streams
+async function ffmpeg(): Promise<Uint8Array> {
+  const ff = spawn(["ffmpeg", "-f", "avfoundation", "-framerate", "1", "-i", "1:none", "-vframes", "1", "-f", "image2pipe", "-c:v", "jxl", "pipe:1"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const outBuf = new Uint8Array(await new Response(ff.stdout!).arrayBuffer());
+  // Optional: decode stderr for debugging
+  if (!isProd && ff.stderr) {
+    const errText = await new Response(ff.stderr).text();
+    if (errText.trim()) console.debug("[ffmpeg stderr]", errText);
+  }
+  return outBuf;
+}
+// mouse position n click
+// ax tree activaty (clicks ele hirachy, )
+
+// env
+
+//triger n memory
+// key press
+// memo: what the logs is bind with what key preesed
+//deci: if likey be try to use this key press to trigger gui
+
+//perform gui action
+//ax simula, fallb mouse simulat
+
+/*  on screen hotlink
+local q = ""
+local g = "https://www.google.com/search?q=" .. q .. "?utm_source=europeansostorng"
+local i = "https://www.google.com/search?tbm=isch&q=" .. q .. "?utm_source=europeansostorng"
+local c = "https://chatgpt.com/?q=" .. q .. "?utm_source=europeansostorng"
+
+-- what if i let
+function hotlink(q)
+    -- ne european: open a link in the default browser, but only if it looks like a valid http(s) url
+    if type(q) == "string" and q:match("^https?://[%w%.%-_/%%?&=]+$") then
+        hs.execute(string.format('open "%s"', q))
+    else
+        hs.alert.show("⚠️ Not a valid URL: " .. tostring(q), 1.2)
+    end
+end
+function capt(q)
+   local cmd = string.format('screencapture -x "%s"', q)
+   local ok, out, err, rc = hs.execute(cmd, true)
+   if ok and rc == 0 then
+       hs.alert.show("✅ Screenshot saved as: " .. q, 1.2)
+   else
+       hs.alert.show("❌ Screenshot failed: " .. tostring(err), 1.5)
+   end
+end
+function ocr()
+  --procese got big string of results, both position and letter
+  --now altly just past to gemini
+end
+function mouse()
+  local pos = hs.mouse.absolutePosition()
+  local x   = math.floor(pos.x)
+  local y   = math.floor(pos.y)
+  print(string.format("Mouse at: %d, %d", x, y))
+end*/
