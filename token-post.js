@@ -4,7 +4,7 @@
 // @namespace    https://github.com/happyf-weallareeuropean
 // @version      a.a
 // @author       felixy happyfceleste & Johannes Thyroff(https://github.com/JThyroff/WideGPT)
-// @description  automate tts for chatgpt. Hide UI bloat on chatgpt, gemini, claude, mistral.
+// @description  tts streaming respose for chatgpt. Hide UI bloat on chatgpt, gemini, claude, mistral.
 // @updateURL    https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
 // @downloadURL  https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
 // @match     *://chatgpt.com/*
