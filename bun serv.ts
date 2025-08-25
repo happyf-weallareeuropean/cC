@@ -27,8 +27,12 @@ const SERVER_PORT = 65535;
 const TTS_RATE = 190; // Speech rate for the 'say' command
 const isProd = Bun.env.NODE_ENV === "production";
 
-const logInfo = (...args: any[]) => {};
-const logWarn = (...args: any[]) => {};
+const logInfo = (...args: any[]) => {
+  if (!isProd) console.log("[INFO]", ...args);
+};
+const logWarn = (...args: any[]) => {
+  if (!isProd) console.warn("[WARN]", ...args);
+};
 const logError = console.error.bind(console, "[ERROR]"); // Always log errors
 
 // A pool of reliable ad‑free European classical streams
@@ -129,13 +133,12 @@ const flushQueue = () => {
   logInfo("Flushing speech queue and stopping current speech.");
   speakQueue = [];
   stopSayProcess();
-  eumute();
+  // eumute(); // temporarily disabled per request
 };
 
 const enqueueSpeech = (text: string) => {
   logInfo(`[${new Date().toISOString()}] Received incoming letter: "${text}"`);
 
-  // (remove chars that `say` n europe dislike)
   const sanitizedText = text.replace(/[^\u{20}-\u{39}\u{3B}-\u{1E79}\u{2000}-\u{218F}\u{2200}-\u{23FF}\u{2460}-\u{24FF}]/gu, " "); // keep all europe safe item to tts
 
   if (speakQueue.length === 0) {
@@ -153,15 +156,6 @@ const enqueueSpeech = (text: string) => {
   }
 };
 
-function warmtts() {
-  const p = ptyspawn("say", ["-i", "-r", String(TTS_RATE)], {
-    name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-  });
-  p.onData((d) => Bun.stdout.write(d));
-  p.write(".");
-}
 const coretts = (textToSpeak) => ["say", "-r", String(TTS_RATE), textToSpeak];
 const startNextSpeech = () => {
   if (!isProd) {
@@ -305,7 +299,9 @@ let eusafe = true;
 const eu_flip_mute = () => {
   if (!eusafe) return;
   eusafe = false;
-  euMpv.write("m\r");
+  if (euMpv) {
+    euMpv.write("m\r");
+  }
   euMuted = !euMuted;
   eusafe = true;
 };
@@ -370,8 +366,9 @@ const handleRequest = async (request: Request): Promise<Response> => {
         if (!isProd) {
           console.debug("[DEBUG]", "🔄 lpEU ping received.");
         }
-        startEUPingWatchdog();
-        euunmute();
+        // if (!euMpv) await eu_start(); // disabled
+        // startEUPingWatchdog(); // keep watchdog off while EU is disabled
+        // euunmute(); // disabled
         return new Response("lpEU pong", { status: 200 });
       }
 
@@ -393,12 +390,13 @@ const handleRequest = async (request: Request): Promise<Response> => {
       // EU Controls
       if (payload.playEU) {
         logInfo("playEU request received.");
-        euunmute(); // only unmute if muted
+        // if (!euMpv) await eu_start(); // disabled
+        // euunmute(); // disabled
         // Return immediately after handling EU command if no text is present
         if (!payload.text?.trim()) return new Response("OK (EU Play)", { status: 200 });
       } else if (payload.stopEU) {
         logInfo("stopEU request received.");
-        eu_mute(); // only mute if unmuted
+        // eumute(); // disabled
         // Return immediately after handling EU command if no text is present
         if (!payload.text?.trim()) return new Response("OK (EU Stop)", { status: 200 });
       }
@@ -473,7 +471,7 @@ const startServer = async () => {
       },
     });
     logInfo(`🎙️ TTS Server (using 'say') started on http://localhost:${server.port}`);
-    eu_start();
+    // Lazy start EU stream only when requested via playEU/lpEU
     // void eu_warm();
   } catch (error) {
     logError(`Failed to start server on port ${SERVER_PORT}:`, error);
@@ -492,7 +490,7 @@ const stopServer = async () => {
   }
   // Stop related processes
   flushQueue(); // Stops current speech and clears queue
-  eu_exitmpv();
+  // eu_exitmpv(); // disabled
 };
 
 // Optional Electron integration (guarded so Bun tests won’t fail)
@@ -532,89 +530,128 @@ void startServer();
 
 // Keep the script running until interrupted
 // Bun automatically keeps running while the server is active.
-// We add an extra interval just to be explicit if needed, but server.stop() and process.exit() handle termination.
-// setInterval(() => {}, 1 << 30); // Keep alive indefinitely (optional)
-logInfo("Script initialization complete. Server is running.");
 
 // --- ai cleanup client --------
-import { GoogleGenAI, createUserContent } from "@google/genai";
+// Note: Gemini proxy is disabled in production to avoid overhead.
+let handleGeminiRequest: (event: any) => Promise<{ statusCode: number; headers: Record<string, string>; body: string }>;
+if (!isProd) {
+  // Dev-only dynamic import to avoid loading SDK in production
+  const initGemini = async () => {
+    const { GoogleGenAI, createUserContent } = await import("@google/genai");
 
-// Configuration
-const CONFIG = {
-  API_KEY: Bun.env.GEMINI_API_KEY,
+    // Configuration
+    const CONFIG = {
+      API_KEY: Bun.env.GEMINI_API_KEY,
+      MODEL_NAME: "gemini-2.5-flash-lite-preview-06-17",
+      GENERATION_CONFIG: { temperature: 1, topK: 32, topP: 0.95, maxOutputTokens: 32000 },
+      SYSTEM_INSTRUCTION: `i.main goal: base on full ax tree, ur goal is from there rever to show off exactly last-ai-response(LAR) ; no conversation with user or any other else just pure show off LAR. also the ax tree are noicy avoid any noises eg but not limited like response hist/thoughts/ui etc. also if were none match, the show off shall be empty (null output).
+      ii.sub goal: Ingros - facemaks, special simples, non european chars. Replace - simples like '+' '-' if is in math context into 'plus' 'minus' specialy '-' can be mutible means, this just an example the goal is as smartly adatively replace make how to prenowce more direct in europe word.
+      iii.main goal - no ur own imgine adds: to make sure the LAR shall as 100% rever as base on the ax tree, no ur own imgine adds, cuz the goal is show or mirr the LAR as it is`,
+    } as const;
 
-  MODEL_NAME: "gemini-2.5-flash-lite-preview-06-17",
-
-  GENERATION_CONFIG: {
-    temperature: 1,
-    topK: 32,
-    topP: 0.95,
-    maxOutputTokens: 32000,
-  },
-  SYSTEM_INSTRUCTION: `i.main goal: base on full ax tree, ur goal is from there rever to show off exactly last-ai-response(LAR) ; no conversation with user or any other else just pure show off LAR. also the ax tree are noicy avoid any noises eg but not limited like response hist/thoughts/ui etc. also if were none match, the show off shall be empty (null output).
-  ii.sub goal: Ingros - facemaks, special simples, non european chars. Replace - simples like '+' '-' if is in math context into 'plus' 'minus' specialy '-' can be mutible means, this just an example the goal is as smartly adatively replace make how to prenowce more direct in europe word.
-  iii.main goal - no ur own imgine adds: to make sure the LAR shall as 100% rever as base on the ax tree, no ur own imgine adds, cuz the goal is show or mirr the LAR as it is`,
-};
-
-// Initialize the GenAI client
-if (!CONFIG.API_KEY) {
-  console.error("[ERROR] GEMINI_API_KEY environment variable is not set!");
-  console.error("Please set it by running: export GEMINI_API_KEY='your-api-key-here'");
-}
-const genAI = new GoogleGenAI({ apiKey: CONFIG.API_KEY || "" });
-
-/**
- * Main handler function for serverless execution
- * @param {Object} event - The event object containing the request data
- * @returns {Promise<Object>} The response object
- */
-async function handleGeminiRequest(event) {
-  try {
-    // Parse the incoming request
-    const { prompt, conversation = [] } = parseRequest(event);
-
-    if (!prompt) {
-      return createResponse(400, { error: "No prompt provided" });
+    if (!CONFIG.API_KEY) {
+      console.error("[ERROR] GEMINI_API_KEY environment variable is not set!");
+      console.error("Please set it by running: export GEMINI_API_KEY='your-api-key-here'");
     }
+    const genAI = new GoogleGenAI({ apiKey: CONFIG.API_KEY || "" });
 
-    // Create a chat session (new Gen AI SDK syntax)
-    const chat = genAI.chats.create({
-      model: CONFIG.MODEL_NAME,
-      config: {
-        systemInstruction: CONFIG.SYSTEM_INSTRUCTION,
-        generationConfig: CONFIG.GENERATION_CONFIG,
-      },
-      history: [],
-    });
+    async function _handleGeminiRequest(event: any) {
+      try {
+        const { prompt, conversation = [] } = parseRequest(event);
+        if (!prompt) return createResponse(400, { error: "No prompt provided" });
 
-    // Send the user's prompt
-    const result = await chat.sendMessage({ message: prompt });
+        const chat = genAI.chats.create({
+          model: CONFIG.MODEL_NAME,
+          config: { systemInstruction: CONFIG.SYSTEM_INSTRUCTION, generationConfig: CONFIG.GENERATION_CONFIG },
+          history: [],
+        });
 
-    // Robustly extract the model’s text regardless of SDK version
-    let text;
-    try {
-      if (typeof result === "string") {
-        text = result; // Some SDK calls return string directly
-      } else if (typeof result.text === "function") {
-        text = result.text(); // New GenAI SDK
-      } else if (result.response && typeof result.response.text === "function") {
-        text = result.response.text(); // Old pattern
-      } else {
-        text = JSON.stringify(result); // Fallback: dump raw JSON
+        const result: any = await chat.sendMessage({ message: prompt });
+        let text: string;
+        try {
+          if (typeof result === "string") text = result;
+          else if (typeof result.text === "function") text = result.text();
+          else if (result.response && typeof result.response.text === "function") text = result.response.text();
+          else text = JSON.stringify(result);
+        } catch (e) {
+          console.warn("Unable to extract text from Gemini response:", e);
+          text = "Failed to extract text from Gemini response.";
+        }
+        return createResponse(200, { response: text });
+      } catch (error: any) {
+        console.error("Error processing request:", error);
+        return createResponse(500, { error: "Failed to process request", details: error?.message });
       }
-    } catch (e) {
-      console.warn("⚠️ Unable to extract text from Gemini response:", e);
-      text = "⚠️ Failed to extract text from Gemini response.";
     }
 
-    return createResponse(200, { response: text });
-  } catch (error) {
-    console.error("Error processing request:", error);
-    return createResponse(500, {
-      error: "Failed to process request",
-      details: error.message,
+    // Expose handler
+    handleGeminiRequest = _handleGeminiRequest;
+
+    // Dev-only Bun server for Gemini proxy
+    Bun.serve({
+      port: 41111,
+      async fetch(req) {
+        try {
+          const timestamp = new Date().toISOString();
+          console.log(`\n[${timestamp}] Incoming ${req.method} request to ${req.url}`);
+
+          if (req.method === "OPTIONS") {
+            return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
+          }
+          if (!["GET", "POST"].includes(req.method)) {
+            return new Response(JSON.stringify({ error: "Only GET and POST methods are allowed" }), { status: 405, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+          }
+
+          if (req.method === "POST" && new URL(req.url).pathname === "/analyze-image") {
+            try {
+              const data = await req.json();
+              if (!data.image || !data.prompt) throw new Error("Missing required fields: image and prompt are required");
+              const contents = [data.prompt, { inlineData: { mimeType: "image/jpeg", data: data.image } }];
+              const result = await (await import("@google/genai")).GoogleGenAI.prototype.models.generateContent.call(genAI, { model: "gemini-2.5-flash-lite-preview-06-17", contents: (await import("@google/genai")).createUserContent(contents), config: { systemInstruction: (genAI as any).SYSTEM_INSTRUCTION, generationConfig: (genAI as any).GENERATION_CONFIG } });
+              const analysis = (result as any).text();
+              return new Response(JSON.stringify({ success: true, analysis, timestamp: new Date().toISOString() }), { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+            } catch (error: any) {
+              console.error("Error processing image:", error);
+              return new Response(JSON.stringify({ success: false, error: error.message, timestamp: new Date().toISOString() }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+            }
+          }
+
+          let prompt = "";
+          if (req.method === "GET") {
+            const url = new URL(req.url);
+            const searchParams = url.searchParams;
+            prompt = Array.from(searchParams.entries()).map(([key, value]) => `${key}=${value}`).join("\n");
+          } else {
+            prompt = (await req.text()).trim();
+          }
+
+          const result = await _handleGeminiRequest({ prompt: prompt || "No content provided", conversation: [] });
+          console.log(`[${new Date().toISOString()}] Sending response (${result.body.length} bytes)`);
+          return new Response(result.body, { status: result.statusCode, headers: result.headers });
+        } catch (error: any) {
+          console.error("Error processing request:", error);
+          return new Response(JSON.stringify({ error: "Failed to process request", details: error.message }, null, 2), { status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        }
+      },
     });
-  }
+
+    console.log(`Gemini API proxy server running at http://localhost:41111/`);
+    console.log("Endpoints:");
+    console.log("  GET  /?your=prompt");
+    console.log('  POST / -d "Your prompt here"');
+    
+  };
+
+  // Kick off init (no await to not block TTS)
+  initGemini().catch((e) => console.error("Gemini init failed", e));
+} else {
+  // Production stub (no extra server started)
+  handleGeminiRequest = async () =>
+    ({
+      statusCode: 503,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      body: JSON.stringify({ error: "Gemini proxy disabled in production" }),
+    });
 }
 
 /**
@@ -622,7 +659,7 @@ async function handleGeminiRequest(event) {
  * @param {Object} event - The event object
  * @returns {Object} Parsed request data
  */
-function parseRequest(event) {
+function parseRequest(event: any) {
   // Handle different event formats (API Gateway, direct invocation, etc.)
   let body = {};
 
@@ -646,7 +683,7 @@ function parseRequest(event) {
  * @param {Object} body - Response body
  * @returns {Object} Formatted response
  */
-function createResponse(statusCode, body) {
+function createResponse(statusCode: number, body: any) {
   return {
     statusCode,
     headers: {
@@ -658,157 +695,7 @@ function createResponse(statusCode, body) {
   };
 }
 
-// Bun HTTP server using Bun.serve API
-Bun.serve({
-  port: 41111,
-  async fetch(req) {
-    try {
-      // Log incoming request
-      const timestamp = new Date().toISOString();
-      console.log(`\n[${timestamp}] Incoming ${req.method} request to ${req.url}`);
-
-      // Handle CORS preflight
-      if (req.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-          },
-        });
-      }
-
-      // Only allow GET and POST
-      if (!["GET", "POST"].includes(req.method)) {
-        return new Response(JSON.stringify({ error: "Only GET and POST methods are allowed" }), {
-          status: 405,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      }
-
-      // Handle image analysis endpoint
-      if (req.method === "POST" && new URL(req.url).pathname === "/analyze-image") {
-        try {
-          const data = await req.json();
-
-          if (!data.image || !data.prompt) {
-            throw new Error("Missing required fields: image and prompt are required");
-          }
-
-          // Create user content with both text and image parts
-          const contents = [
-            data.prompt,
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: data.image,
-              },
-            },
-          ];
-
-          const result = await genAI.models.generateContent({
-            model: CONFIG.MODEL_NAME,
-            contents: createUserContent(contents),
-            config: {
-              systemInstruction: CONFIG.SYSTEM_INSTRUCTION,
-              generationConfig: CONFIG.GENERATION_CONFIG,
-            },
-          });
-          const analysis = result.text();
-
-          return new Response(
-            JSON.stringify({
-              success: true,
-              analysis,
-              timestamp: new Date().toISOString(),
-            }),
-            {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-              },
-            }
-          );
-        } catch (error) {
-          console.error("Error processing image:", error);
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: error.message,
-              timestamp: new Date().toISOString(),
-            }),
-            {
-              status: 400,
-              headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-              },
-            }
-          );
-        }
-      }
-
-      // Process prompt from GET query or POST body
-      let prompt = "";
-
-      if (req.method === "GET") {
-        const url = new URL(req.url);
-        const searchParams = url.searchParams;
-        prompt = Array.from(searchParams.entries())
-          .map(([key, value]) => `${key}=${value}`)
-          .join("\n");
-      } else {
-        // POST body as text
-        prompt = (await req.text()).trim();
-      }
-
-      const result = await handleGeminiRequest({
-        prompt: prompt || "No content provided",
-        conversation: [],
-      });
-
-      // Log and send the response
-      console.log(`[${new Date().toISOString()}] Sending response (${result.body.length} bytes)`);
-
-      return new Response(result.body, {
-        status: result.statusCode,
-        headers: result.headers,
-      });
-    } catch (error) {
-      console.error("Error processing request:", error);
-      return new Response(
-        JSON.stringify(
-          {
-            error: "Failed to process request",
-            details: error.message,
-          },
-          null,
-          2
-        ),
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        }
-      );
-    }
-  },
-});
-
-console.log(`Gemini API proxy server running at http://localhost:41111/`);
-console.log("Endpoints:");
-console.log("  GET  /?your=prompt");
-console.log('  POST / -d "Your prompt here"');
-console.log('  POST /analyze-image -d \'{"image": "base64data...", "prompt": "Describe this image"}\'');
-
-// Export for serverless environments
+// Export for serverless environments (stub in production)
 export { handleGeminiRequest as handleRequest };
 
 //inspect
