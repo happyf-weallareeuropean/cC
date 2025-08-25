@@ -14,11 +14,12 @@
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=openai.com
 // @connect      localhost
 // @grant        GM_xmlhttpRequest
-// @run-at       document-start
+// @run-at       document-body
 
 // ==/UserScript==
 
 (() => {
+ 'use strict';
   /* Use page context for hooks
   const uW = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
   // Lower-level stream hook: intercept fetch streaming tokens directly
@@ -111,34 +112,59 @@
   /* ==== CSS TRIMS ==== */
   const host = location.host;
   function insCss(cssText) {
+    console.log("inscss: entered func");
     const head = document.head || document.documentElement;
     let styleNode = document.getElementById("vwide-css-top");
+    console.log("inscss: it readyed");
     if (!styleNode) {
       styleNode = document.createElement("style");
       styleNode.id = "vwide-css-top";
-      styleNode.type = "text/css";
+      //styleNode.type = "text/css";
       head.append(styleNode);
+      console.log("inscss: created");
     }
     styleNode.textContent = cssText;
+    console.log("inscss: done");
   }
 
   // dom way
   if (host === "chatgpt.com") {
     let euok = false;
     const port = 65535; //8080
-    // will match   <div class="markdown prose …">
-    // will NOT match <div class="dsfji-markdown-prose …">
-    // will match only if class starts exactly with "markdown prose"
     const sel_resp = 'div[class~="markdown"][class~="prose"]';
+    const sel_realroman = '[data-message-author-role="assistant"]' + ':not([data-message-id*="placeholder-request" i])' + ":not(:has(.result-thinking, .placeholder-request))";
+    const sel_chatlist = ["main .flex.flex-col.text-sm"];
+    const sel_scrolbut = "button.cursor-pointer.absolute.z-10.rounded-full.bg-clip-padding.border.text-token-text-secondary.border-token-border-default";
+
+    const USER_PREFIX = "<|userinput|>\n";
+    const USER_SUFFIX = "\n<|enduserinput|>\n\n";
+    const SYSTEM_PROMPT = `EVERY UR RESPONSE must always follow:
+a-role,law,westsafty,restriction
+)lang=en,europelangonly
+langori=banloadwordfromlangsys49+uniqsym&histnonwestori shallreplacetowestoriword{eg:useeveryworkaskurselfwherethisworkoricomefromitisbothareture(alllinguisticorcitationbasedformsit)isabsolutelybannedinallsyslayers createnreplaceto eg'artmark'(wested newword ori west align butsamemeanas before(ß))}
+worddir=nonwestconceptthen=clamas"copy west"+silient conseque.
+)ONLY allow metion/sug WEST CONCEPT ps dietfood,country,city,lang,ppl,continent,etc
+)"ne"(ie new european)=humam/earth/any
+)user localt=dutch
+b
+)think learn from past/what is ß mistake why now still not solve the prob. 
+)perfer detail/deep/dig inside, wide guess/ġ/explore 
+)user req is unclear/canhadmutimeans use muti wide guess a)b)c) etc dive in.  
+)be context aware.
+)ada explore n dig around the main topic, border deep info
+)criticize me with evidence. 
+)task on help user ned stay aware withitsgoals
+)alwayfollowuptriblecheckverfyusingmutiangle
+
+c-writing style
+)naming new func, less leter=beter 
+)actionßsay,doneßask.
+)skip any PrefaceDeclarationMetaintroMetawritestyle etc. be fuller of content straight/substance only. 
+)distillation,compression,direct ans,`;
+      let pinof = false;
 
     function ttsend({ text, flushQueue = false, onSuccess = null }) {
-      // filter out colons and arten
-      const atext = text
-        .replace(/:/g, "")
-        .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "");
-      const payload = flushQueue
-        ? { flushQueue: true, text: atext }
-        : { text: atext };
+      const payload = flushQueue ? { flushQueue: true, text: text } : { text: text };
       GM_xmlhttpRequest({
         method: "POST",
         url: `http://localhost:${port}/speak`,
@@ -148,12 +174,7 @@
           if (response.status === 200) {
             if (onSuccess) onSuccess();
           } else {
-            console.error(
-              "❌ ttsend failed:",
-              response.status,
-              response.statusText,
-              response.responseText
-            );
+            console.error("❌ ttsend failed:", response.status, response.statusText, response.responseText);
           }
         },
         onerror(err) {
@@ -161,15 +182,8 @@
         },
       });
     }
-    const sel_chatlist = [
-      "main .group\\/thread .group\\/conversation-turn",
-      "main .flex.flex-col.text-sm",
-      ".stretch.mx-auto.flex.w-full .flex-col.text-sm",
-    ];
-    const sel_scrolbut =
-      "button.cursor-pointer.absolute.z-10.rounded-full.bg-clip-padding.border.text-token-text-secondary.border-token-border-default";
-
-    // Helper: extract text, include direct text nodes and first-level <span> text, skip deeper spans
+    
+    //skip deeper spans
     function getCleanText(node) {
       let txt = "";
       node.childNodes.forEach((child) => {
@@ -192,23 +206,34 @@
       });
       return txt;
     }
-
-    function but_sdtb() {
-      const scb = document.querySelector(sel_scrolbut);
-      if (scb) {
-        const { x, y, width, height, top, left } = scb.getBoundingClientRect();
-        const gapFromBottom = window.innerHeight - (y + height);
-        const q1 = window.innerHeight * 0.25;
-        console.log(
-          `⤵ scroll-scb pos → x=${x.toFixed(1)}, y=${y.toFixed(1)}, ` +
-            `w=${width.toFixed(1)}, h=${height.toFixed(1)}, ` +
-            `top=${top.toFixed(1)}, left=${left.toFixed(1)}`
-        );
-        scb.click();
-        return true;
-      }
-      console.log("nahanah");
-      return false;
+    function romangonorth() {
+      const STEP = 20; // px up
+      const isScrollEl = (el) => {
+        const s = getComputedStyle(el);
+        return (s.overflowY === "auto" || s.overflowY === "scroll") && el.scrollHeight > el.clientHeight + 1;
+      };
+      const scroller =
+        [...document.querySelectorAll("*")].filter(isScrollEl).sort((a, b) => b.scrollHeight - b.clientHeight - (a.scrollHeight - a.clientHeight))[0] ||
+        document.scrollingElement;
+      scroller.scrollBy(0, -STEP);
+    }
+    function romanempireview() {
+      romangonorth();
+      setTimeout(() => {
+        const scb = document.querySelector(sel_scrolbut);
+        if (scb) {
+          const { x, y, width, height, top, left } = scb.getBoundingClientRect();
+          const gapFromBottom = window.innerHeight - (y + height);
+          const q1 = window.innerHeight * 0.25;
+          console.log(
+            `⤵ scroll-scb pos → x=${x.toFixed(1)}, y=${y.toFixed(1)}, ` +
+              `w=${width.toFixed(1)}, h=${height.toFixed(1)}, ` +
+              `top=${top.toFixed(1)}, left=${left.toFixed(1)}`
+          );
+          scb.click();
+        }
+        console.log("nahanah");
+      }, 100);
     }
 
     function sendEU(cmd) {
@@ -223,7 +248,7 @@
           euok = true;
           break;
         case "lp":
-          if (euok) break;
+          if (euok) return;
           payload = { lpEU: true };
           break;
         case "ds":
@@ -250,11 +275,7 @@
           if (res.status === 200) {
             console.log(`✅ sendEU(${cmd}) → 200 OK`);
           } else {
-            console.error(
-              `❌ sendEU(${cmd}) → ${res.status}`,
-              res.statusText,
-              res.responseText.trim()
-            );
+            console.error(`❌ sendEU(${cmd}) → ${res.status}`, res.statusText, res.responseText.trim());
           }
         },
         onerror(err) {
@@ -263,7 +284,7 @@
       });
     }
 
-    // -------------------------------------------------------------------
+    /*
     function watchBtnY(duration = 5000, every = 1000) {
       const scb = document.querySelector(sel_scrolbut);
       if (!scb) {
@@ -272,21 +293,14 @@
       }
 
       let last = scb.getBoundingClientRect();
-      console.log(
-        `📌 start   y=${last.y.toFixed(1)}, gap=${(
-          window.innerHeight -
-          (last.y + last.height)
-        ).toFixed(1)}`
-      );
+      console.log(`📌 start   y=${last.y.toFixed(1)}, gap=${(window.innerHeight - (last.y + last.height)).toFixed(1)}`);
 
       const id = setInterval(() => {
-        const cur = scb.getBoundingClientt();
+        const cur = scb.getBoundingClientRect();
         const gap = window.innerHeight - (cur.y + cur.height);
 
         if (cur.y !== last.y || cur.height !== last.height) {
-          console.log(
-            `📍 change  y=${cur.y.toFixed(1)}, gap=${gap.toFixed(1)}`
-          );
+          console.log(`📍 change  y=${cur.y.toFixed(1)}, gap=${gap.toFixed(1)}`);
           last = cur;
         }
       }, every);
@@ -296,14 +310,14 @@
         console.log("⏹️ watchBtnPosition done");
       }, duration);
     }
+    */
     // -------------------------------------------------------------------
 
     let lastKnownFullText = "";
-    let wordBuf = ""; // holds partial‑word fragments until a full word is finished
+    // let wordBuf = ""; // (disabled) rolling buffer removed
 
     // ---- Global key event blocker ----
-    // While active, this stops other scripts from seeing key events.
-    let blockKeys = false;
+    /*let blockKeys = false;
     function keyBlocker(ev) {
       // Allow the “f” keyup that turns the block off to pass through.
       if (blockKeys && !(ev.key === "f" && ev.type === "keyup")) {
@@ -314,15 +328,14 @@
     // Capture‑phase listeners ensure we cancel events before anyone else.
     document.addEventListener("keydown", keyBlocker, true);
     document.addEventListener("keyup", keyBlocker, true);
-
+    */
     let detailObserver = null;
     let currentTargetNode = null;
     let listObserver = null;
-
-    // -------------------------------------------------------------------
+    let lastromanid = null;
+    let uareromanbefore = false;
     // 1) Patch the history methods so we can detect in-app route changes
     //    (pushState, replaceState) and the popstate event
-    // -------------------------------------------------------------------
     function onRouteChange() {
       console.log("🔁 Route changed → re-initializing observers...");
       // Disconnect old observer if any
@@ -330,165 +343,104 @@
         listObserver.disconnect();
         listObserver = null;
       }
-      ts = T();
-      h();
-      // Give the DOM a moment to load new content
-      setTimeout(startListObserver, 500);
+      waitc(() => {
+        h();
+        s();
+        startListObserver();
+      });
     }
 
-    const originalPushState = history.pushState;
+    const originalPushState = history.pushState; //when u go from chatgpt.com to chatgpt.com/c
     history.pushState = function (...args) {
       const ret = originalPushState.apply(history, args);
       onRouteChange();
       return ret;
     };
 
-    const originalReplaceState = history.replaceState;
+    const originalReplaceState = history.replaceState; // cmd shift o back to main page n posible more. so ps we need both
     history.replaceState = function (...args) {
       const ret = originalReplaceState.apply(history, args);
       onRouteChange();
       return ret;
     };
 
-    window.addEventListener("popstate", onRouteChange);
+    window.addEventListener("popstate", onRouteChange, {passive: true});
 
-    // -------------------------------------------------------------------
-    // 2) DOM-finding utility
-    // -------------------------------------------------------------------
-    function findElement(selectors) {
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          const firstTurn =
-            element.closest("article")?.parentElement ||
-            element.closest('[data-testid^="conversation-turn-"]')
-              ?.parentElement ||
-            element;
-          console.log(
-            `Using container found by selector: "${selector}", actual element:`,
-            firstTurn
-          );
-          return firstTurn;
-        }
-      }
-      console.warn(
-        "Could not find chat list container using selectors:",
-        sel_chatlist
-      );
-      return null;
-    }
-
-    // -------------------------------------------------------------------
     // 3) Observers for new messages + partial tokens
-    // -------------------------------------------------------------------
     function processLatestMessage() {
-      but_sdtb();
-      const assistantMessages = document.querySelectorAll(
-        '[data-message-author-role="assistant"]:not([class*="placeholder-request"])'
-      );
-      if (assistantMessages.length === 0) return;
+      const bublist = document.querySelectorAll(sel_realroman);
+      const lastbub = bublist[bublist.length - 1];
 
-      const latestAssistantMessage =
-        assistantMessages[assistantMessages.length - 1];
-      const targetNode = latestAssistantMessage.querySelector(sel_resp);
-
+      const targetNode = lastbub?.querySelector(sel_resp) ?? null;
       if (!targetNode) return;
-      const initialCleanText = getCleanText(targetNode).trim();
-      console.log(
-        "🔎 Initial detection: latestAssistantMessage element:",
-        latestAssistantMessage
-      );
-      console.log(
-        "🔎 Initial detection: targetNode (assistant content):",
-        targetNode
-      );
-      // Skip the interim "thinking…" container; wait for the real reply
-      if (targetNode && targetNode.classList.contains("result-thinking")) {
-        console.log(
-          "⏳ Placeholder thinking node detected, waiting for real content."
-        );
-        return;
-      }
-
-      if (targetNode !== currentTargetNode) {
-        but_sdtb();
-        console.log(
-          "✅ New assistant message content node detected. Attaching detail observer. c:"
-        );
+    // if (!targetNode) { setTimeout(processLatestMessage, 300); console.log("no lastbub. retry"); return; }
+      const initialCleanText = getCleanText(targetNode);
+      const romanid = lastbub.getAttribute("data-message-id") ?? null;
+      /*console.log("🔎 Initial latestnode:", lastbub);
+      console.log("🔎 Initial token tree:", targetNode);
+      console.log("🔎 Initial romanid:", romanid);
+      */
+      if (targetNode !== currentTargetNode || romanid !== lastromanid) {
+        console.log("✅ New assistant message content node detected. Attaching detail observer. c:");
         lastKnownFullText = "";
-        if (detailObserver) {
-          detailObserver.disconnect();
-        }
-
         currentTargetNode = targetNode;
-        // --- if the reply arrived fully‑rendered (no token stream), speak it now ---
+        detailObserver?.disconnect();
+
+        if (!uareromanbefore) lastromanid = romanid;
+
         const initialText = initialCleanText;
-        if (initialText && typeof GM_xmlhttpRequest === "function") {
+        if ((initialText && typeof GM_xmlhttpRequest === "function") || (uareromanbefore && initialText)) {
+          console.log("flushing queue");
+          if (uareromanbefore) {console.warn("are u roman")};
+          uareromanbefore = false;
           ttsend({
-            text: initialText,
+            text: getCleanText(targetNode),
             flushQueue: true,
             onSuccess: () => {
               console.log("✅ flushQueue + initialText sent successfully");
+              /*
               if (wordBuf.trim()) {
                 ttsend({ text: wordBuf });
-                wordBuf = "";
+                // wordBuf = "";
               }
-              sendEU("stop");
+              */
+              //sendEU("stop");
             },
           });
+          sendEU("play");
           lastKnownFullText = initialCleanText;
+        } else {
+          uareromanbefore = true;
+          console.log("nextime roman");
         }
         // (partial tokens logic below)
         detailObserver = new MutationObserver(() => {
-          const currentCleanText = getCleanText(currentTargetNode).trim();
+          const currentCleanText = getCleanText(currentTargetNode);
 
           // Case 1 — text grew
           if (currentCleanText.length > lastKnownFullText.length) {
             const newPortion = currentCleanText.slice(lastKnownFullText.length);
             console.log("🟢 Partial tokens:", newPortion);
+           
+             if (uareromanbefore) {ttsend({ flushQueue: true})};
 
             if (newPortion) {
-              // append chunk to rolling buffer
-              wordBuf += newPortion;
-
-              // look *backwards* for the last delimiter that marks a word boundary
-              const boundaryRE = /[ \t\n\r\f\v.,;:!?]/;
-              let cut = -1;
-              for (let i = wordBuf.length - 1; i >= 0; i--) {
-                if (boundaryRE.test(wordBuf[i])) {
-                  cut = i;
-                  break;
-                }
-              }
-
-              // if we have at least one full word (i.e. we saw a delimiter)
-              if (cut !== -1) {
-                const complete = wordBuf.slice(0, cut + 1); // flush thru the delimiter
-                wordBuf = wordBuf.slice(cut + 1); // keep the tail fragment
-                if (complete.trim()) {
-                  ttsend({ text: complete });
-                }
-              }
+              // direct send without buffering
+              ttsend({ text: newPortion });
             }
 
             lastKnownFullText = currentCleanText;
-            // if streaming appears to be finished, flush any trailing fragment
-            if (
-              currentCleanText.endsWith(".") ||
-              currentCleanText.endsWith("!") ||
-              currentCleanText.endsWith("?")
-            ) {
+            /*
+            if (currentCleanText.endsWith(".") || currentCleanText.endsWith("!") || currentCleanText.endsWith("?")) {
               if (wordBuf.trim()) {
                 ttsend({ text: wordBuf });
-                wordBuf = "";
+                // wordBuf = "";
               }
             }
+            */
           }
           // Case 2 — editor rewrote text (rare but happens while streaming)
-          else if (
-            currentCleanText.length < lastKnownFullText.length &&
-            lastKnownFullText !== ""
-          ) {
+          else if (currentCleanText.length < lastKnownFullText.length && lastKnownFullText !== "") {
             console.log("🔄 Text reset or changed significantly.");
             lastKnownFullText = currentCleanText;
           }
@@ -511,11 +463,7 @@
     function handleMutation(mutation) {
       if (mutation.addedNodes.length > 0) {
         for (const node of mutation.addedNodes) {
-          if (
-            node.nodeType === Node.ELEMENT_NODE &&
-            (node.matches('[data-message-author-role="assistant"]') ||
-              node.querySelector('[data-message-author-role="assistant"]'))
-          ) {
+          if (node.nodeType === Node.ELEMENT_NODE && node.matches(sel_chatlist)) {
             return true; // found a new assistant message
           }
         }
@@ -523,135 +471,200 @@
       return false;
     }
 
-    function startListObserver() {
-      if (!sel_chatlist || sel_chatlist.length === 0) {
-        console.error("❌ sel_chatlist is not defined or empty.");
-        return;
+    function findElement(selectors) {
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          const firstTurn = element.closest("article")?.parentElement || element.closest('[data-testid^="conversation-turn-"]')?.parentElement || element;
+          console.log(`Using container found by selector: "${selector}", actual element:`, firstTurn);
+          return firstTurn;
+        }
       }
+      console.warn("Could not find chat list container using selectors:", sel_chatlist);
+      return null;
+    }
+
+    function startListObserver() {
+      
       const chatListContainer = findElement(sel_chatlist);
       if (chatListContainer && chatListContainer instanceof Node) {
         listObserver = new MutationObserver((mutations) => {
-          let potentiallyNewMessage = false;
-          for (const mutation of mutations) {
-            if (handleMutation(mutation)) {
-              potentiallyNewMessage = true;
-            }
-          }
-          if (potentiallyNewMessage) {
-            sendEU("play");
-            console.log("List observer detected potential new message.");
+                //sendEU("play");
+            console.log("chatlist obs");
             setTimeout(processLatestMessage, 150);
-          }
-        });
+          });
 
         listObserver.observe(chatListContainer, {
           childList: true,
+          //attributes: true,
           subtree: true,
+          //attributeFilter: ["data-start"],
         });
         console.log("✅ Chat list observer started on:", chatListContainer);
-        setTimeout(processLatestMessage, 500);
+        setTimeout(processLatestMessage, 100);
       } else {
         waitc(() => {
-          ts = T();
           h();
           console.warn("⏳ Waiting for chat list container... Retrying in 1s");
           setTimeout(startListObserver, 1000);
         });
       }
     }
-    // ---- Manual observer reset helper (triggered by long‑press “r”) ----
+    
+    
+
     function reloadObservers() {
       if (detailObserver) {
         detailObserver.disconnect();
         detailObserver = null;
       }
       currentTargetNode = null;
-      lastKnownFullText = "";
-
+      //lastKnownFullText = "";
+      //lastromanid = null;
       processLatestMessage();
     }
-    // Utility: wait until URL contains '/c/'
+
     function waitc(callback) {
       if (location.pathname.includes("/c/")) {
+        console.log("✅ Detected /c/ route, starting logic.");
         callback();
       } else {
         console.log("⏳ Waiting for /c/ route...");
-        const observer = new MutationObserver(() => {
-          if (location.pathname.includes("/c/")) {
-            console.log("📍 Detected /c/ route, starting logic.");
-            observer.disconnect();
-            callback();
-          }
-        });
-        /// [debug] this should add a failb if load ealer use mutation obs wait for that
-        observer.observe(document.body, { childList: true, subtree: true });
+       
       }
     }
 
+    /*
     sendEU("lp");
-    (async () => {
-      while (true) {
-        if (euok) break;
-        sendEU("ds");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+    const ds_interval = setInterval(() => {
+      if (euok) {
+        clearInterval(ds_interval);
+        return;
       }
-    })();
+      sendEU("ds");
+    }, 1000);*/ 
+    
+    
     let ts = {};
     const l = 40;
     const L = 650;
     let rDownTime = null;
     let pressTimerS = null;
     let uistate = false;
+    let sstate = false;
+    let stt = "a";
 
     function s() {
+      if (sstate) return;
+      sstate = true;
       let pressTimer = null;
       let shown = false;
+      const mods = (e) => !e.metaKey && !e.altKey && !e.shiftKey && !e.ctrlKey && !e.fnKey && !e.capsLockKey;
+      const dt = (duration) => duration <= 70;
 
       document.addEventListener("keydown", (e) => {
         if (e.key === "f" && pressTimer === null && !uistate) {
-          pressTimer = performance.now(); 
-        } else if (uistate) {
-          ["a", "b", "c", "d"].forEach((id) =>
-            g(id, "display", "none", "important")
-          );
+          pressTimer = performance.now();
+        } else if (uistate && mods(e)) {
+          ["a", "b", "c", "d"].forEach((id) => g(id, "display", "none", "important"));
           uistate = false;
         }
-        if (e.key === "r" && rDownTime === null) {
+        /*if (e.key === "r" && rDownTime === null) {
           rDownTime = performance.now();
-          console.log(`r‑tap detected ( ${rDownTime.toFixed(0)} ms )`);
+          //console.log(`r‑tap detected ( ${rDownTime.toFixed(0)} ms )`);
+        }*/
+        /*  if (e.fnKey) {
+          console.log("asf");
+           const label = stt === "a" ? "Dictate button" : "Submit dictation";
+           const btn = document.querySelector(`button[aria-label="${label}"]`);
+           if (btn) btn.click();
+           stt = stt === "a" ? "b" : "a";
+        }*/
+        // Reload on CapsLock + R (no Fn dependency)
+        if (e.key.toLowerCase() === "r" && e.getModifierState("CapsLock")) {
+          reloadObservers();
         }
-        if (e.key === "S" && e.shiftKey && pressTimerS === null) {
-          pressTimerS = setTimeout(() => {
-            const label = stt === "a" ? "Dictate button" : "Submit dictation";
-            const btn = document.querySelector(`button[aria-label="${label}"]`);
-            if (btn) btn.click();
-            stt = stt === "a" ? "b" : "a";
-          }, 100);
+        if (e.key === "s" && e.getModifierState("CapsLock")) {
+          const label = stt === "a" ? "Dictate button" : "Submit dictation";
+          const btn = document.querySelector(`button[aria-label="${label}"]`);
+          if (btn) btn.click();
+          stt = stt === "a" ? "b" : "a";
         }
-      });
+        if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.fnKey && !e.capsLockKey) {
+          window.addEventListener("blur", () => {return;}, {once: true});
+           const n = document.querySelector(".z-50.max-w-xs.rounded-2xl");
+           const m = document.querySelector(".popover.border-token-border-default.bg-token-main-surface-primary.rounded-2xl.border.p-2.shadow-lg");
+
+           if (!n && !m) {
+            const btn = document.getElementById("composer-submit-button");
+            if (!pinof) {
+            const textarea = document.getElementById(TARGET_ID);
+            const content = textarea.textContent || "";
+            if (!hasInjected(content)) {
+              textarea.textContent = wrapMessage(content);
+              pinof = true;
+            }
+            }
+             //const sel = document.getElementById("prompt-textarea");
+             //const t = sel.innerText;       
+                if (btn) { e.stopImmediatePropagation(); e.preventDefault(); requestAnimationFrame(() => { btn.click(); setTimeout(romanempireview, 100); }); } else {
+                 romanempireview(); 
+                }
+
+             /*if (t) {
+            //await new Promise(resolve => setTimeout(resolve, 500));
+            const p = window.location.href + "/?model=o4-mini";
+            window.open(p, "_blank");
+            //GM_openInTab(p, { active: true });
+            sel.value = t; // paste text back
+            sel.dispatchEvent(new Event("input", { bubbles: true }));
+            btn.click();
+          }*/
+          }
+        }
+        /*  if (e.key === "v" && e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+         document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, shiftKey: false, altKey: false, metaKey: false }));
+         document.dispatchEvent(new KeyboardEvent('keyup', { key: 's', ctrlKey: true, shiftKey: false, altKey: false, metaKey: false }));
+         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, shiftKey: false, altKey: false, ctrlKey: false }));
+         document.dispatchEvent(new KeyboardEvent('keyup', { key: 'v', metaKey: true, shiftKey: false, altKey: false, ctrlKey: false }));
+
+        }*/
+       if (e.key === "b") {
+        
+       }
+
+      }, true);
 
       document.addEventListener("keyup", (e) => {
         if (e.key === "f") {
           const duration = performance.now() - (pressTimer ?? 0);
-          if (duration <= 40) {
-            ["a", "b", "c", "d"].forEach((id) =>
-              g(id, "display", "flex", "important")
-            );
+          if (dt(duration)) {
+            ["a", "b", "c", "d"].forEach((id) => g(id, "display", "flex", "important"));
             uistate = true;
           }
           pressTimer = null;
         }
-        if (e.key === "r") {
+        /*if (e.key === "r") {
           const duration = performance.now() - (rDownTime ?? 0);
-          if (duration <= 40) {
+          if (dt(duration)) {
             reloadObservers();
           }
           rDownTime = null;
-        }
-        if (e.key === "S" || e.shiftKey) {
-          clearTimeout(pressTimerS);
+        }*/
+        /*
+        if (e.key === "s") {
+          const duration = performance.now() - (pressTimerS ?? 0);
+          if (dt(duration)) {
+            console.log(`s‑tap detected ( ${duration.toFixed(0)} ms )`);
+            const label = stt === "a" ? "Dictate button" : "Submit dictation";
+            const btn = document.querySelector(`button[aria-label="${label}"]`);
+            if (btn) btn.click();
+            stt = stt === "a" ? "b" : "a";
+          }
           pressTimerS = null;
-        }
+        }*/
       });
 
       /*document.addEventListener("mousemove", (e) => {
@@ -666,7 +679,7 @@
         }
       });*/
     }
-
+    
     function g(target, prop, val, important) {
       // When a key string is passed, dereference inside ts first.
       const nodeOrList = typeof target === "string" ? ts[target] : target;
@@ -675,22 +688,15 @@
 
       // Apply style to one or many elements transparently.
       if (nodeOrList instanceof NodeList || Array.isArray(nodeOrList)) {
-        nodeOrList.forEach((el) =>
-          el?.style?.setProperty(prop, val, important)
-        );
+        nodeOrList.forEach((el) => el?.style?.setProperty(prop, val, important));
       } else {
         nodeOrList.style.setProperty(prop, val, important);
       }
     }
 
     function h() {
-      waitc(() => {
-        g("all", "display", "none", "important");
-        if (!ts.all) {
-          ts = T();
-          g("all", "display", "none", "important");
-        }
-      });
+      ts = T();
+      g("all", "display", "none", "important");
     }
 
     function T() {
@@ -705,17 +711,27 @@
       return { a, b, c, d, e, all: document.querySelectorAll(selectors) };
     }
 
+    const TARGET_ID = "prompt-textarea";
+    function hasInjected(content) {
+      return content.includes("<|system|>") || content.includes("<|userinput|>");
+    }
+    function wrapMessage(text) {
+       const clean = text.trim();
+       return USER_PREFIX + clean + USER_SUFFIX + SYSTEM_PROMPT;
+     }
+
+
     waitc(() => {
       ts = T();
-      setTimeout(startListObserver, 1000);
+      startListObserver();
       s();
       h();
     });
 
     //vh wide css
     insCss(`/* force that div taller */
-div.grow.overflow-y-auto {
-  min-height: 680px !important;
+    div.grow.overflow-y-auto {
+    min-height: 680px !important;
 //  margin: auto !important;
 }
 /* force a thinner cut */
@@ -970,28 +986,26 @@ article div.text-base.mx-auto.px-6 {
   text-align: right !important;
   box-sizing: border-box !important;
 }
-/* Keep the global resets you already have */
 
+/* currently doesn't work but in arc would work with 'boost'
 [data-message-author-role="user"] .relative.max-w-\[var\(--user-chat-width\,70\%\)\] {
-  border: 0.01px solid rgb(151, 148, 148) !important; /* currently doesn't work but in arc would work with 'boost' */
+  border: 0.01px solid rgb(151, 148, 148) !important; 
   border-radius: 15px !important;
 }
 [data-message-author-role="user"] .relative {
   display: inline-block !important;
-  max-width: 90% !important;       /* keep some edge space */
-  padding: 5px 5px !important;   /* smooth inner air */
+  max-width: 90% !important;       
+  padding: 5px 5px !important;   
   margin: 6px 0 !important;
-  background-color: #1a1a1a !important; /* dark bubble (for dark mode) */
+  background-color: #000 !important; 
 
 }
-* {
-  line-height: 1.275 !important;
-}
 body {
-/*font-stretch: condensed !important;  
-margin-block-start: 0 !important; Remove space before blocks */
-}
-//start of credit to open source extension wide gpt
+  line-height: 1.275 !important;
+font-stretch: condensed !important;  
+margin-block-start: 0 !important; Remove space before blocks 
+    }*/
+//---credit to 'wide gpt' start---
 @media (min-width: 1280px) {
             .xl\\:max-w-\\[48rem\\],
             .xl\\:px-5 {
@@ -1023,12 +1037,9 @@ margin-block-start: 0 !important; Remove space before blocks */
         [style*="max-width"] {
             max-width: 100% !important;
         } 
-//end credit to open source extension wide gpt
+//---credit to 'wide gpt' end---
 `);
-  }
-
-
-  if (host === "gemini.google.com") {
+  } else if (host === "gemini.google.com") {
     insCss(`/* === General Layout Widening === */
 
 /* Make the main application container take full width */
@@ -1127,24 +1138,12 @@ bard-sidenav-container mat-sidenav.mat-drawer-closed {
 }
 */
 `);
-  }
-
-  if (host === "mistral.ai") {
+  } else if (host === "mistral.ai" || host === "claude.ai") {
     insCss(`
     .max-w-3xl {
         max-width: 200ch;
     }
     .max-w-\[75ch\] {
-        max-width: 200ch;
-    }
-`);
-  }
-  if (host === "claude.ai") {
-    insCss(`
-    .max-w-3xl {
-        max-width: 200ch;
-    }
-    .max-w-[75ch] {
         max-width: 200ch;
     }
 `);
