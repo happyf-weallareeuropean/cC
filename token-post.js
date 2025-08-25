@@ -2,7 +2,7 @@
 // @name         cC~
 // @homepageURL  https://github.com/happyf-weallareeuropean/cC
 // @namespace    https://github.com/happyf-weallareeuropean
-// @version      a.a
+// @version      2025.08.25
 // @author       felixy happyfceleste & Johannes Thyroff(https://github.com/JThyroff/WideGPT)
 // @description  tts streaming respose for chatgpt. Hide UI bloat on chatgpt, gemini, claude, mistral.
 // @updateURL    https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
