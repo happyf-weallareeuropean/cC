@@ -1,23 +1,22 @@
-# intro
-*cC~* ⌨️😌
-
 https://github.com/user-attachments/assets/247d7223-b6c5-4d95-b0fb-2f449d070554
 
-- it turns ur chatgpt text into live siri voice output as u chat it speaks responses aloud in real time.
-- hands stay free from equential, eyes rest easy.
+- only work on macos.
 
-# to setup
-i.base
-- cope this two script: one put 'bun serv.ts' run with [Bun](https://bun.sh), and monkey.js put in tapermonkey (siswser extension).
+# setup
+[install js extension](https://greasyfork.org/en/scripts/547214-cc/code)
 
-ii.perfer high quilty siri voice
-- comand + space go to sys seting
-- comand + f then type 'spoken content' set ur siri defult vioce to siri voice 2 (very close to chatgpt tts, 9/10)
-
-iii.
-happyf close eye! ()
+run this line
+```
+curl -fsSL "https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/bun%20serv.ts" | bun run -
+```
 
 
+ all set, Enjoy! 
+
+opt, higher quilty siri voice
+in system setting search for 'spoken content' (cmd f) set ur siri defult vioce to eg siri voice 2
+
+ 
 
 ---
 
