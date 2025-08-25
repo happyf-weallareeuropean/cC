@@ -1,4 +1,4 @@
-- only work in macos.
+- only work on macos.
 
 # setup
 i. installed Tempermonkey. ([get now](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en))
