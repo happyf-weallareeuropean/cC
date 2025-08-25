@@ -15,7 +15,7 @@
 // @connect      localhost
 // @grant        GM_xmlhttpRequest
 // @run-at       document-body
-
+// @license MIT 
 // ==/UserScript==
 
 (() => {
