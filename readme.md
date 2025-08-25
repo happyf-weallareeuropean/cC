@@ -1,12 +1,16 @@
-- only work on macos.
+- only work in macos.
 
 # setup
 i. installed Tempermonkey. ([get now](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en))
 
 ii. [install cC script](https://greasyfork.org/en/scripts/547214-cc/code)
 
-iii. run this line
+iii. run this in ur terminal
 ```
+if ! command -v bun >/dev/null 2>&1; then
+  curl -fsSL https://bun.sh/install | bash
+  exec $SHELL
+fi
 curl -fsSL "https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/bun%20serv.ts" | bun run -
 ```
 
