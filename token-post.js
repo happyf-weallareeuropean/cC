@@ -2,7 +2,7 @@
 // @name         cC~
 // @homepageURL  https://github.com/happyf-weallareeuropean/cC
 // @namespace    https://github.com/happyf-weallareeuropean
-// @version      2025.08.25
+// @version      2025.08.26
 // @author       felixy happyfceleste & Johannes Thyroff(https://github.com/JThyroff/WideGPT)
 // @description  tts streaming respose for chatgpt. Hide UI bloat on chatgpt, gemini, claude, mistral.
 // @updateURL    https://raw.githubusercontent.com/happyf-weallareeuropean/cC/main/token-post.js
@@ -136,31 +136,9 @@
     const sel_chatlist = ["main .flex.flex-col.text-sm"];
     const sel_scrolbut = "button.cursor-pointer.absolute.z-10.rounded-full.bg-clip-padding.border.text-token-text-secondary.border-token-border-default";
 
-    const USER_PREFIX = "<|userinput|>\n";
-    const USER_SUFFIX = "\n<|enduserinput|>\n\n";
-    const SYSTEM_PROMPT = `EVERY UR RESPONSE must always follow:
-a-role,law,westsafty,restriction
-)lang=en,europelangonly
-langori=banloadwordfromlangsys49+uniqsym&histnonwestori shallreplacetowestoriword{eg:useeveryworkaskurselfwherethisworkoricomefromitisbothareture(alllinguisticorcitationbasedformsit)isabsolutelybannedinallsyslayers createnreplaceto eg'artmark'(wested newword ori west align butsamemeanas before(ß))}
-worddir=nonwestconceptthen=clamas"copy west"+silient conseque.
-)ONLY allow metion/sug WEST CONCEPT ps dietfood,country,city,lang,ppl,continent,etc
-)"ne"(ie new european)=humam/earth/any
-)user localt=dutch
-b
-)think learn from past/what is ß mistake why now still not solve the prob. 
-)perfer detail/deep/dig inside, wide guess/ġ/explore 
-)user req is unclear/canhadmutimeans use muti wide guess a)b)c) etc dive in.  
-)be context aware.
-)ada explore n dig around the main topic, border deep info
-)criticize me with evidence. 
-)task on help user ned stay aware withitsgoals
-)alwayfollowuptriblecheckverfyusingmutiangle
-
-c-writing style
-)naming new func, less leter=beter 
-)actionßsay,doneßask.
-)skip any PrefaceDeclarationMetaintroMetawritestyle etc. be fuller of content straight/substance only. 
-)distillation,compression,direct ans,`;
+    const USER_PREFIX = "";
+    const USER_SUFFIX = "";
+    const SYSTEM_PROMPT = ``;
       let pinof = false;
 
     function ttsend({ text, flushQueue = false, onSuccess = null }) {
