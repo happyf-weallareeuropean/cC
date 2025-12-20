@@ -1,6 +1,14 @@
 - only work on macos.
 
 # setup
+A
+i.([nevigate to downlaod zip](https://github.com/happyf-weallareeuropean/cC/releases/latest)).
+
+ii. click to download the zip 
+
+iii.make sure devoloper mode on, drag zip to ur 'manage extension' page(eg arc://extensions/).
+
+B 
 i. installed Tempermonkey. ([get now](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en))
 
 ii. [install cC script](https://greasyfork.org/en/scripts/547214-cc/code)
