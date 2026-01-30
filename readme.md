@@ -1,7 +1,7 @@
 - only work on macos.
 
 # setup
-A
+A way
 
 i.([nevigate to downlaod zip](https://github.com/happyf-weallareeuropean/cC/releases/latest)).
 
@@ -9,7 +9,7 @@ ii. click to download the zip
 
 iii.make sure devoloper mode on, drag zip to ur 'manage extension' page(eg arc://extensions/).
 
-B 
+B way
 
 i. installed Tempermonkey. ([get now](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en))
 
