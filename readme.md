@@ -1,4 +1,5 @@
-- only work on macos.
+- some partss only work on macos.
+- this extention pack include the my another repo functionality (vh-wider-chatgpt)[https://github.com/happyf-weallareeuropean/vh-wide-chatgpt], which maximize the chat content to both vertical and horizontal widths, previde 5× less scrolling and 5× more text content in single frame. 
 
 # setup
 way A
